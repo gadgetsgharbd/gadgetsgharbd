@@ -76,9 +76,37 @@ export interface User {
 }
 
 // --- Supabase Config ---
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://lxyszolrpinshzpmgxws.supabase.co').trim();
-const supabaseUrl = rawSupabaseUrl.replace(/\/$/, ""); // Remove trailing slash
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4eXN6b2xycGluc2h6cG1neHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjM2MDQsImV4cCI6MjA5MzY5OTYwNH0.u5A5jf3SZ7zjDDK_fS7Jj5dfSCwjiDlPqrtZrT1P-8k').trim();
+const sanitizeConfig = (val: string) => {
+  if (!val) return "";
+  return val.trim().replace(/^["']|["']$/g, "");
+};
+
+const sanitizeUrl = (url: string) => {
+  let cleaned = sanitizeConfig(url);
+  if (!cleaned) return "";
+  
+  // Force remove any trailing slashes, /rest, /v1 or combinations
+  cleaned = cleaned.replace(/\/(rest|v1|auth|storage|realtime).*$/i, "");
+  cleaned = cleaned.replace(/\/+$/, "");
+
+  if (!cleaned.startsWith("http")) cleaned = "https://" + cleaned;
+
+  try {
+    const u = new URL(cleaned);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return cleaned;
+  }
+};
+
+const supabaseUrlValue = import.meta.env.VITE_SUPABASE_URL || 'https://lxyszolrpinshzpmgxws.supabase.co';
+const supabaseUrl = sanitizeUrl(supabaseUrlValue);
+const supabaseAnonKey = sanitizeConfig(import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4eXN6b2xycGluc2h6cG1neHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjM2MDQsImV4cCI6MjA5MzY5OTYwNH0.u5A5jf3SZ7zjDDK_fS7Jj5dfSCwjiDlPqrtZrT1P-8k');
+
+if (!supabaseUrl.startsWith('http')) {
+    console.error("CRITICAL: Invalid Supabase URL configuration:", supabaseUrl);
+}
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const supabaseService = {
@@ -320,11 +348,10 @@ export default function App() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-                        const [products, orders, settings, { data: sessionData }] = await Promise.all([
-          supabaseService.getProducts(),
-          supabaseService.getOrders(),
-          supabaseService.getSettings(),
-          supabase.auth.getSession()
+        const [products, orders, settings] = await Promise.all([
+          supabaseService.getProducts().catch(() => []),
+          supabaseService.getOrders().catch(() => []),
+          supabaseService.getSettings().catch(() => null)
         ]);
         
         if (products && products.length > 0) {
@@ -342,31 +369,41 @@ export default function App() {
         if (settings) {
             setSiteSettings(prev => ({ ...prev, ...settings }));
         }
-        
-        if (sessionData.session) {
-          const sUser = sessionData.session.user;
-          
-          setUser({
-            uid: sUser.id,
-            email: sUser.email || '',
-            displayName: sUser.user_metadata?.full_name || 'User',
-            photoURL: sUser.user_metadata?.avatar_url || null,
-            phoneNumber: sUser.user_metadata?.phone_number || ''
-          });
-          
-          // Persistent Admin Login check
-          if (sUser.user_metadata?.role === 'admin') {
-            setIsAdminLoggedIn(true);
-          }
-        }
       } catch (error) {
-        console.error('Failed to fetch data from Supabase:', error);
+        console.error('Failed to fetch initial data:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
+
+    // Global Auth State Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      if (session) {
+        const sUser = session.user;
+        setUser({
+          uid: sUser.id,
+          email: sUser.email || sUser.user_metadata?.email || '',
+          displayName: sUser.user_metadata?.full_name || sUser.user_metadata?.display_name || 'User',
+          photoURL: sUser.user_metadata?.avatar_url || null,
+          phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || ''
+        });
+        
+        // Persistent Admin Login check from metadata
+        if (sUser.user_metadata?.role === 'admin') {
+          setIsAdminLoggedIn(true);
+        }
+      } else {
+        setUser(null);
+        setIsAdminLoggedIn(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Admin Product Form State
@@ -472,6 +509,12 @@ Your task:
   // Admin Actions
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!supabaseUrl || !supabaseUrl.startsWith('http')) {
+        alert('Config Error: Supabase URL is not configured correctly. Please check VITE_SUPABASE_URL.');
+        return;
+    }
+
     setAdminAuthLoading(true);
     
     try {
@@ -481,7 +524,11 @@ Your task:
       });
 
       if (error) {
-        alert('Authentication Failed: ' + error.message);
+        if (error.message.includes('Invalid path')) {
+            alert('CRITICAL CONFIG ERROR: Invalid Supabase API path. Please ensure your VITE_SUPABASE_URL environment variable is correct (e.g. https://xyz.supabase.co) and does not include extra paths like /rest/v1.');
+        } else {
+            alert('Authentication Failed: ' + error.message);
+        }
         return;
       }
       
@@ -2329,7 +2376,7 @@ Your task:
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest pl-1">Phone Number <span className="text-red-500">*</span></label>
+                      <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest pl-1">Phone Number (Optional)</label>
                       <input 
                         type="tel" 
                         placeholder="017XX-XXXXXX"
@@ -2342,13 +2389,14 @@ Your task:
                 )}
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest pl-1">
-                        {authMode === 'signup' ? 'Email Address (Optional)' : 'Email or Phone Number'}
+                        {authMode === 'signup' ? 'Email Address *' : 'Email or Phone Number'}
                       </label>
                       <input 
                         type="text" 
+                        required
                         value={userEmail}
                         onChange={(e) => setUserEmail(e.target.value)}
-                        placeholder={authMode === 'signup' ? "name@example.com (Optional)" : "Email or Phone Number"}
+                        placeholder={authMode === 'signup' ? "name@example.com" : "Email or Phone Number"}
                         className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-600 outline-none text-sm transition-all text-neutral-900 dark:text-white"
                       />
                     </div>
@@ -2389,35 +2437,39 @@ Your task:
                           return;
                         }
 
-                        if (authMode === 'signup' && (!authFullName || !authPhoneNumber)) {
-                          alert('Please enter your full name and phone number');
+                        if (authMode === 'signup' && !authFullName) {
+                          alert('Please enter your full name');
                           return;
                         }
 
                         setAuthLoading(true);
                         try {
                           if (authMode === 'signup') {
-                            // Format phone number for Supabase (must be E.164)
-                            let formattedPhone = authPhoneNumber.replace(/[^0-9+]/g, '');
-                            if (formattedPhone.startsWith('01')) {
-                              formattedPhone = '+88' + formattedPhone;
-                            } else if (formattedPhone.startsWith('1')) {
-                              formattedPhone = '+880' + formattedPhone;
+                            if (!userEmail.trim()) {
+                              alert('Please provide an Email Address for account creation.');
+                              setAuthLoading(false);
+                              return;
                             }
 
-                            // If email is provided, sign up with email, otherwise sign up with phone
-                            // Note: Signing up with phone + password requires specific Supabase config
-                            const signUpData = userEmail 
-                              ? { email: userEmail, password: authPassword }
-                              : { phone: formattedPhone, password: authPassword };
+                            // Robust Phone Formatting
+                            let formattedPhone = authPhoneNumber.trim().replace(/\s/g, '');
+                            if (formattedPhone && !formattedPhone.startsWith('+')) {
+                              if (formattedPhone.startsWith('01')) {
+                                formattedPhone = '+88' + formattedPhone;
+                              } else if (formattedPhone.length === 10) {
+                                formattedPhone = '+880' + formattedPhone;
+                              }
+                            }
+
+                            const signUpData = { email: userEmail.trim(), password: authPassword };
 
                             const { data, error } = await supabase.auth.signUp({
                               ...signUpData,
                               options: {
                                 data: {
-                                  full_name: authFullName,
-                                  phone_number: authPhoneNumber,
-                                  email: userEmail || ''
+                                  full_name: authFullName.trim(),
+                                  phone_number: formattedPhone,
+                                  display_name: authFullName.trim()
                                 }
                               }
                             });
@@ -2425,75 +2477,48 @@ Your task:
                             if (error) throw error;
                             
                             if (data.user) {
-                              alert('Account created successfully!');
-                              setUser({
-                                uid: data.user.id,
-                                email: data.user.email || data.user.user_metadata?.email || '',
-                                displayName: data.user.user_metadata?.full_name || 'User',
-                                photoURL: data.user.user_metadata?.avatar_url || null,
-                                phoneNumber: data.user.user_metadata?.phone_number || authPhoneNumber
-                              });
-                              // Clear fields
+                              alert('Congratulations! Your account has been created. Check email for verification if provided.');
                               setAuthPassword('');
                               setAuthFullName('');
                               setAuthPhoneNumber('');
+                              setUserEmail('');
                               setIsAuthModalOpen(false);
-
-                              // Admin role check from metadata
-                              if (data.user.user_metadata?.role === 'admin') {
-                                setIsAdminLoggedIn(true);
-                              }
                             }
                           } else {
-                            // Login: check if identifier is email or phone
-                            const isEmail = userEmail.includes('@');
-                            let loginIdentifier = userEmail;
+                            // Properly handle Login
+                            let loginId = userEmail.trim();
+                            const isEmail = loginId.includes('@');
                             
                             if (!isEmail) {
-                              // Likely a phone number, format it
-                              loginIdentifier = userEmail.replace(/[^0-9+]/g, '');
-                              if (loginIdentifier.startsWith('01')) {
-                                loginIdentifier = '+88' + loginIdentifier;
-                              } else if (loginIdentifier.startsWith('1')) {
-                                loginIdentifier = '+880' + loginIdentifier;
+                              loginId = loginId.replace(/\s/g, '');
+                              if (!loginId.startsWith('+')) {
+                                if (loginId.startsWith('01')) {
+                                  loginId = '+88' + loginId;
+                                } else if (loginId.length === 10) {
+                                  loginId = '+880' + loginId;
+                                }
                               }
                             }
 
                             const signInData = isEmail 
-                              ? { email: userEmail, password: authPassword }
-                              : { phone: loginIdentifier, password: authPassword };
+                              ? { email: loginId, password: authPassword }
+                              : { phone: loginId, password: authPassword };
 
                             const { data, error } = await supabase.auth.signInWithPassword(signInData);
-                            
                             if (error) throw error;
                             
                             if (data.user) {
-                              setUser({
-                                uid: data.user.id,
-                                email: data.user.email || data.user.user_metadata?.email || '',
-                                displayName: data.user.user_metadata?.full_name || 'User',
-                                photoURL: data.user.user_metadata?.avatar_url || null,
-                                phoneNumber: data.user.user_metadata?.phone_number || ''
-                              });
-                              // Clear fields
                               setAuthPassword('');
                               setIsAuthModalOpen(false);
-
-                              // Admin role check from metadata
-                              if (data.user.user_metadata?.role === 'admin') {
-                                setIsAdminLoggedIn(true);
-                              }
                             }
                           }
                         } catch (err: any) {
-                          console.error("Auth Error:", err);
-                          const message = err.message || '';
-                          if (message.toLowerCase().includes('invalid login credentials') || message.toLowerCase().includes('incorrect password')) {
-                            alert('Incorrect password or email. Please try again.');
-                          } else if (message.includes('Invalid path')) {
-                            alert('Config Error: Please check your Supabase URL in environment variables. Ensure it doesn\'t have trailing slashes or spaces.');
+                          console.error("Authentication Failure:", err);
+                          const errMsg = err.message || '';
+                          if (errMsg.includes('Invalid path')) {
+                            alert('CRITICAL CONFIG ERROR: The Supabase API path is invalid. Please check your Vercel VITE_SUPABASE_URL. It should be just the domain like https://xyz.supabase.co');
                           } else {
-                            alert(err.message || 'Authentication failed');
+                            alert(errMsg || 'Auth failed');
                           }
                         } finally {
                           setAuthLoading(false);
