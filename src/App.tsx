@@ -305,6 +305,7 @@ export default function App() {
   const [authPhoneNumber, setAuthPhoneNumber] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<'info' | 'orders' | 'settings' | null>(null);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState(false);
@@ -802,10 +803,11 @@ Your task:
 
             <div className="flex items-center gap-2 md:gap-4">
               {/* User Account */}
-              <div className="relative group">
+              <div className="relative">
                 {user ? (
                   <button 
-                    className="flex items-center gap-2 p-1 pl-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all border border-transparent hover:border-neutral-200 dark:hover:border-neutral-700"
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-2 p-1 pl-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
                   >
                     <div className="hidden sm:block text-right">
                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none mb-0.5">Welcome</p>
@@ -833,35 +835,60 @@ Your task:
                 )}
 
                 {/* Dropdown - Simple version */}
-                {user && (
-                   <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-100 dark:border-neutral-800 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right scale-95 group-hover:scale-100 z-50 overflow-hidden">
-                    <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
-                      <p className="text-xs font-bold text-neutral-900 dark:text-white truncate">{user.displayName}</p>
-                      <p className="text-[10px] text-neutral-500 truncate">{user.email}</p>
-                    </div>
-                    <div className="p-2">
-                       <button 
-                        onClick={() => {
-                          setIsProfileModalOpen(true);
-                          if (window.innerWidth >= 768) setProfileTab('info');
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg transition-colors text-left"
+                <AnimatePresence>
+                  {user && isUserMenuOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-[45]" 
+                        onClick={() => setIsUserMenuOpen(false)}
+                      />
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-100 dark:border-neutral-800 z-50 overflow-hidden"
                       >
-                        <UserIcon className="w-4 h-4 text-neutral-400" /> My Profile
-                      </button>
-                    </div>
-                    <button 
-                      onClick={async () => {
-                        await supabase.auth.signOut();
-                        setUser(null);
-                        setIsAdminLoggedIn(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors border-t border-neutral-100 dark:border-neutral-800"
-                    >
-                      <LogOut className="w-4 h-4" /> Log Out
-                    </button>
-                  </div>
-                )}
+                        <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
+                          <p className="text-xs font-bold text-neutral-900 dark:text-white truncate">{user.displayName}</p>
+                          <p className="text-[10px] text-neutral-500 truncate">{user.email}</p>
+                        </div>
+                        <div className="p-2">
+                          <button 
+                            onClick={() => {
+                              setIsProfileModalOpen(true);
+                              setIsUserMenuOpen(false);
+                              if (window.innerWidth >= 768) setProfileTab('info');
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg transition-colors text-left"
+                          >
+                            <UserIcon className="w-4 h-4 text-neutral-400" /> My Profile
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setIsProfileModalOpen(true);
+                              setIsUserMenuOpen(false);
+                              setProfileTab('orders');
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg transition-colors text-left"
+                          >
+                            <Package className="w-4 h-4 text-neutral-400" /> View Orders
+                          </button>
+                        </div>
+                        <button 
+                          onClick={async () => {
+                            await supabase.auth.signOut();
+                            setUser(null);
+                            setIsAdminLoggedIn(false);
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-5 py-3 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors border-t border-neutral-100 dark:border-neutral-800"
+                        >
+                          <LogOut className="w-4 h-4" /> Log Out
+                        </button>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Theme Toggle */}
