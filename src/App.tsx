@@ -136,14 +136,49 @@ const supabaseService = {
     return data as Order[];
   },
   async getOrdersByUserId(userId: string) {
-    const { data, error } = await supabase.from('orders').select('*').eq('userId', userId).order('date', { ascending: false });
-    if (error) throw error;
-    return data as Order[];
+    try {
+      // Try user_id (Postgres convention)
+      const { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('date', { ascending: false });
+      if (!error) return data as Order[];
+      
+      // Fallback to userId (CamelCase convention)
+      const { data: data2, error: error2 } = await supabase.from('orders').select('*').eq('userId', userId).order('date', { ascending: false });
+      if (!error2) return data2 as Order[];
+      
+      throw error || error2;
+    } catch (err) {
+      console.error('getOrdersByUserId failure:', err);
+      return [];
+    }
   },
   async createOrder(order: Order) {
-    const { data, error } = await supabase.from('orders').insert([order]).select();
-    if (error) throw error;
-    return data[0] as Order;
+    try {
+      // First try with original object (matches Order interface)
+      const { data, error } = await supabase.from('orders').insert([order]).select();
+      if (!error && data) return data[0] as Order;
+      
+      // Fallback if column naming mismatch (userId vs user_id)
+      if (error && (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204')) {
+        const mappedOrder = {
+          ...order,
+          user_id: order.userId,
+          customer_details: order.customerDetails,
+          payment_details: order.paymentDetails
+        };
+        // Clean up keys that might not exist in case of strict schema
+        delete (mappedOrder as any).userId;
+        delete (mappedOrder as any).customerDetails;
+        delete (mappedOrder as any).paymentDetails;
+        
+        const { data: data2, error: error2 } = await supabase.from('orders').insert([mappedOrder]).select();
+        if (!error2 && data2) return data2[0] as Order;
+        throw error2 || error;
+      }
+      throw error;
+    } catch (err) {
+      console.error('createOrder failure details:', err);
+      throw err;
+    }
   },
   async updateOrderStatus(orderId: string, status: Order['status']) {
     const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select();
@@ -399,12 +434,12 @@ export default function App() {
     fetchData();
 
     // Global Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Auth event:', event);
       if (session) {
         const sUser = session.user;
-        const userOrders = await supabaseService.getOrdersByUserId(sUser.id).catch(() => []);
         
+        // Set user initial state
         setUser({
           uid: sUser.id,
           email: sUser.email || sUser.user_metadata?.email || '',
@@ -412,7 +447,14 @@ export default function App() {
           photoURL: sUser.user_metadata?.avatar_url || null,
           phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || '',
           address: sUser.user_metadata?.address || '',
-          orders: userOrders
+          orders: []
+        });
+
+        // Fetch orders in background
+        supabaseService.getOrdersByUserId(sUser.id).then(userOrders => {
+          setUser(prev => prev && prev.uid === sUser.id ? { ...prev, orders: userOrders } : prev);
+        }).catch(err => {
+          console.error('Failed to fetch user orders in background:', err);
         });
         
         // Persistent Admin Login check from metadata
@@ -1840,45 +1882,55 @@ Your task:
                       };
                       
                       // Save order to Supabase
-                      supabaseService.createOrder(newOrder).catch(err => console.error('Failed to create order in Supabase:', err));
+                      setAuthLoading(true);
+                      supabaseService.createOrder(newOrder)
+                        .then(() => {
+                          const defaultSessions = [
+                            {
+                              id: 'SESS-1',
+                              device: 'Windows PC',
+                              browser: 'Chrome 124.0.0',
+                              location: 'Dhaka, Bangladesh',
+                              lastActive: 'Just now',
+                              isCurrent: true
+                            }
+                          ];
 
-                      const defaultSessions = [
-                        {
-                          id: 'SESS-1',
-                          device: 'Windows PC',
-                          browser: 'Chrome 124.0.0',
-                          location: 'Dhaka, Bangladesh',
-                          lastActive: 'Just now',
-                          isCurrent: true
-                        }
-                      ];
+                          setUser(prev => {
+                            if (!prev) return currentUser;
+                            return {
+                              ...prev,
+                              orders: [newOrder, ...(prev.orders || [])],
+                              sessions: prev.sessions || defaultSessions
+                            };
+                          });
 
-                      setUser({
-                        ...currentUser,
-                        orders: [newOrder, ...(currentUser.orders || [])],
-                        sessions: currentUser.sessions || defaultSessions
-                      });
+                          setAllOrders(prev => [newOrder, ...prev]);
+                          
+                          setCart([]);
+                          setIsCheckoutOpen(false);
+                          setIsCartOpen(false);
+                          setProfileTab('orders');
+                          setIsProfileModalOpen(true);
+                          setCheckoutStep('details');
+                          setPaymentMethod(null);
+                          setTransactionId('');
+                          // Clear form
+                          setFirstName('');
+                          setLastName('');
+                          setPhone('');
+                          setCheckoutEmail('');
+                          setFullAddress('');
+                          setSelectedDistrict('');
+                          setSelectedThana('');
 
-                      setAllOrders(prev => [newOrder, ...prev]);
-                      
-                      setCart([]);
-                      setIsCheckoutOpen(false);
-                      setIsCartOpen(false);
-                      setProfileTab('orders');
-                      setIsProfileModalOpen(true);
-                      setCheckoutStep('details');
-                      setPaymentMethod(null);
-                      setTransactionId('');
-                      // Clear form
-                      setFirstName('');
-                      setLastName('');
-                      setPhone('');
-                      setCheckoutEmail('');
-                      setFullAddress('');
-                      setSelectedDistrict('');
-                      setSelectedThana('');
-
-                      alert(`অর্ডাার সফল হয়েছে! পেমেন্ট মেথড: ${paymentMethod?.toUpperCase()}, TRX: ${transactionId}. আপনার অর্ডার আইডি: ${newOrderId}`);
+                          alert(`অর্ডাার সফল হয়েছে! পেমেন্ট মেথড: ${paymentMethod?.toUpperCase()}, TRX: ${transactionId}. আপনার অর্ডার আইডি: ${newOrderId}`);
+                        })
+                        .catch(err => {
+                          console.error('Failed to create order in Supabase:', err);
+                          alert('Error: আপনার অর্ডারটি সার্ভারে সেভ করা যায়নি। দয়া করে আবার চেষ্টা করুন বা সরাসরি আমাদের কল করুন।');
+                        })
+                        .finally(() => setAuthLoading(false));
                     }}
                     className={`flex-1 py-5 rounded-[24px] text-xs font-black uppercase tracking-widest shadow-xl transition-all relative overflow-hidden group disabled:opacity-50 disabled:grayscale ${checkoutStep === 'details' ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-neutral-900/20' : 'bg-blue-600 text-white shadow-blue-200/50 dark:shadow-none'}`}
                   >
@@ -2568,23 +2620,42 @@ Your task:
                               }
                             }
 
-                            const signInData = isEmail 
-                              ? { email: loginId, password: authPassword }
-                              : { phone: loginId, password: authPassword };
+                            let signInData: any = { password: authPassword };
+                            if (isEmail) {
+                              signInData.email = loginId;
+                            } else {
+                              signInData.phone = loginId;
+                            }
 
-                            const { data, error } = await supabase.auth.signInWithPassword(signInData);
-                            if (error) throw error;
+                            console.log("Attempting login with:", isEmail ? "email" : "phone");
                             
-                            if (data.user) {
+                            // Use a race to prevent infinite hanging if Supabase is stuck
+                            const loginPromise = supabase.auth.signInWithPassword(signInData);
+                            const timeoutPromise = new Promise((_, reject) => 
+                              setTimeout(() => reject(new Error("Login timed out. Please check your internet connection or try again.")), 15000)
+                            );
+
+                            const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
+                            
+                            if (error) {
+                              console.error("Login Error:", error);
+                              throw error;
+                            }
+                            
+                            if (data?.user) {
                               setAuthPassword('');
                               setIsAuthModalOpen(false);
+                            } else {
+                              throw new Error("Login failed: User not found");
                             }
                           }
                         } catch (err: any) {
                           console.error("Authentication Failure:", err);
-                          const errMsg = err.message || '';
+                          const errMsg = err.message || JSON.stringify(err);
                           if (errMsg.includes('Invalid path')) {
-                            alert('CRITICAL CONFIG ERROR: The Supabase API path is invalid. Please check your Vercel VITE_SUPABASE_URL. It should be just the domain like https://xyz.supabase.co');
+                            alert('CRITICAL CONFIG ERROR: The Supabase API path is invalid. Please check your VITE_SUPABASE_URL.');
+                          } else if (errMsg.includes('Email not confirmed')) {
+                            alert('Login Failed: Your email has not been confirmed. Please check your inbox.');
                           } else {
                             alert(errMsg || 'Auth failed');
                           }
