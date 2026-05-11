@@ -76,8 +76,9 @@ export interface User {
 }
 
 // --- Supabase Config ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lxyszolrpinshzpmgxws.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4eXN6b2xycGluc2h6cG1neHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjM2MDQsImV4cCI6MjA5MzY5OTYwNH0.u5A5jf3SZ7zjDDK_fS7Jj5dfSCwjiDlPqrtZrT1P-8k';
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://lxyszolrpinshzpmgxws.supabase.co').trim();
+const supabaseUrl = rawSupabaseUrl.replace(/\/$/, ""); // Remove trailing slash
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4eXN6b2xycGluc2h6cG1neHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjM2MDQsImV4cCI6MjA5MzY5OTYwNH0.u5A5jf3SZ7zjDDK_fS7Jj5dfSCwjiDlPqrtZrT1P-8k').trim();
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const supabaseService = {
@@ -2396,10 +2397,19 @@ Your task:
                         setAuthLoading(true);
                         try {
                           if (authMode === 'signup') {
+                            // Format phone number for Supabase (must be E.164)
+                            let formattedPhone = authPhoneNumber.replace(/[^0-9+]/g, '');
+                            if (formattedPhone.startsWith('01')) {
+                              formattedPhone = '+88' + formattedPhone;
+                            } else if (formattedPhone.startsWith('1')) {
+                              formattedPhone = '+880' + formattedPhone;
+                            }
+
                             // If email is provided, sign up with email, otherwise sign up with phone
+                            // Note: Signing up with phone + password requires specific Supabase config
                             const signUpData = userEmail 
                               ? { email: userEmail, password: authPassword }
-                              : { phone: authPhoneNumber, password: authPassword };
+                              : { phone: formattedPhone, password: authPassword };
 
                             const { data, error } = await supabase.auth.signUp({
                               ...signUpData,
@@ -2437,9 +2447,21 @@ Your task:
                           } else {
                             // Login: check if identifier is email or phone
                             const isEmail = userEmail.includes('@');
+                            let loginIdentifier = userEmail;
+                            
+                            if (!isEmail) {
+                              // Likely a phone number, format it
+                              loginIdentifier = userEmail.replace(/[^0-9+]/g, '');
+                              if (loginIdentifier.startsWith('01')) {
+                                loginIdentifier = '+88' + loginIdentifier;
+                              } else if (loginIdentifier.startsWith('1')) {
+                                loginIdentifier = '+880' + loginIdentifier;
+                              }
+                            }
+
                             const signInData = isEmail 
                               ? { email: userEmail, password: authPassword }
-                              : { phone: userEmail, password: authPassword };
+                              : { phone: loginIdentifier, password: authPassword };
 
                             const { data, error } = await supabase.auth.signInWithPassword(signInData);
                             
@@ -2464,9 +2486,12 @@ Your task:
                             }
                           }
                         } catch (err: any) {
+                          console.error("Auth Error:", err);
                           const message = err.message || '';
                           if (message.toLowerCase().includes('invalid login credentials') || message.toLowerCase().includes('incorrect password')) {
                             alert('Incorrect password or email. Please try again.');
+                          } else if (message.includes('Invalid path')) {
+                            alert('Config Error: Please check your Supabase URL in environment variables. Ensure it doesn\'t have trailing slashes or spaces.');
                           } else {
                             alert(err.message || 'Authentication failed');
                           }
