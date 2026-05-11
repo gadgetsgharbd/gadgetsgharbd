@@ -135,6 +135,11 @@ const supabaseService = {
     if (error) throw error;
     return data as Order[];
   },
+  async getOrdersByUserId(userId: string) {
+    const { data, error } = await supabase.from('orders').select('*').eq('userId', userId).order('date', { ascending: false });
+    if (error) throw error;
+    return data as Order[];
+  },
   async createOrder(order: Order) {
     const { data, error } = await supabase.from('orders').insert([order]).select();
     if (error) throw error;
@@ -317,6 +322,20 @@ export default function App() {
   const [orderNotifications, setOrderNotifications] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
+  // Pre-fill checkout info from user profile
+  useEffect(() => {
+    if (user) {
+      if (user.displayName) {
+        const parts = user.displayName.split(' ');
+        setFirstName(parts[0] || '');
+        setLastName(parts.length > 1 ? parts.slice(1).join(' ') : '');
+      }
+      if (user.email) setCheckoutEmail(user.email);
+      if (user.phoneNumber) setPhone(user.phoneNumber);
+      if (user.address) setFullAddress(user.address);
+    }
+  }, [user, isCheckoutOpen]);
+
   // Admin State
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
@@ -380,16 +399,20 @@ export default function App() {
     fetchData();
 
     // Global Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth event:', event);
       if (session) {
         const sUser = session.user;
+        const userOrders = await supabaseService.getOrdersByUserId(sUser.id).catch(() => []);
+        
         setUser({
           uid: sUser.id,
           email: sUser.email || sUser.user_metadata?.email || '',
           displayName: sUser.user_metadata?.full_name || sUser.user_metadata?.display_name || 'User',
           photoURL: sUser.user_metadata?.avatar_url || null,
-          phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || ''
+          phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || '',
+          address: sUser.user_metadata?.address || '',
+          orders: userOrders
         });
         
         // Persistent Admin Login check from metadata
@@ -2064,29 +2087,47 @@ Your task:
 
                     <div className="mt-auto pt-8 flex gap-4">
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (!user) return;
                           
                           const updatedName = nameRef.current?.value.trim() || user.displayName;
-                          const updatedEmail = emailRef.current?.value.trim() || user.email;
-                          const updatedPhone = phoneRef.current?.value.trim() || '';
-                          const updatedAddress = addressRef.current?.value.trim() || '';
+                          const updatedPhone = phoneRef.current?.value.trim() || user.phoneNumber;
+                          const updatedAddress = addressRef.current?.value.trim() || user.address;
 
-                          setUser({
-                            ...user,
-                            displayName: updatedName,
-                            email: updatedEmail,
-                            phoneNumber: updatedPhone,
-                            address: updatedAddress,
-                            photoURL: tempPhoto || user.photoURL,
-                          });
-                          setTempPhoto(null);
-                          alert('Profile updated successfully!');
-                          setIsProfileModalOpen(false);
+                          setAuthLoading(true);
+                          try {
+                            const { error } = await supabase.auth.updateUser({
+                              data: {
+                                full_name: updatedName,
+                                phone_number: updatedPhone,
+                                address: updatedAddress,
+                                avatar_url: tempPhoto || user.photoURL
+                              }
+                            });
+
+                            if (error) throw error;
+
+                            setUser({
+                              ...user,
+                              displayName: updatedName,
+                              phoneNumber: updatedPhone,
+                              address: updatedAddress,
+                              photoURL: tempPhoto || user.photoURL,
+                            });
+                            
+                            setTempPhoto(null);
+                            alert('Profile updated successfully!');
+                            setIsProfileModalOpen(false);
+                          } catch (err: any) {
+                            alert('Failed to update profile: ' + err.message);
+                          } finally {
+                            setAuthLoading(false);
+                          }
                         }}
-                        className="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 dark:shadow-none active:scale-95 text-sm"
+                        disabled={authLoading}
+                        className="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 dark:shadow-none active:scale-95 text-sm disabled:opacity-50"
                       >
-                        Save Changes
+                        {authLoading ? 'Saving...' : 'Save Changes'}
                       </button>
                       <button
                         onClick={() => {
