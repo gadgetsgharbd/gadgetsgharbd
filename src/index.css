@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-lighting {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 40%,
+    rgba(255, 255, 255, 0.8) 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 200% auto;
+  color: transparent !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  animation: shimmer 3s linear infinite;
+}
+
+.animate-lighting-blue {
+  background: linear-gradient(
+    90deg,
+    #2563eb 0%,
+    #2563eb 40%,
+    #93c5fd 50%,
+    #2563eb 60%,
+    #2563eb 100%
+  );
+  background-size: 200% auto;
+  color: transparent !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  animation: shimmer 3s linear infinite;
+}
+
+.animate-lighting-orange {
+  background: linear-gradient(
+    90deg,
+    #ea580c 0%,
+    #ea580c 40%,
+    #ffedd5 50%,
+    #ea580c 60%,
+    #ea580c 100%
+  );
+  background-size: 200% auto;
+  color: transparent !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes devGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-dev-gradient {
+  background: linear-gradient(
+    270deg,
+    #3b82f6,
+    #8b5cf6,
+    #06b6d4,
+    #3b82f6
+  );
+  background-size: 300% 300%;
+  color: transparent !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  animation: devGradient 4s ease infinite;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
