@@ -305,7 +305,23 @@ const getNextId = () => {
 };
 
 export default function App() {
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedCart = localStorage.getItem('gadgets_ghar_cart');
+        return savedCart ? JSON.parse(savedCart) : [];
+      } catch (e) {
+        console.error('Failed to parse cart from localStorage', e);
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Sync cart to localStorage
+  useEffect(() => {
+    localStorage.setItem('gadgets_ghar_cart', JSON.stringify(cart));
+  }, [cart]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1070,7 +1086,7 @@ Your task:
                       <div className={`px-6 py-3 rounded-2xl ${allSlides[currentSlide].isPreOrder ? 'bg-amber-100/10 border-amber-500/30' : 'bg-blue-100/10 border-blue-500/30'} border backdrop-blur-md`}>
                         <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-1">Status</p>
                         <p className={`text-xl font-black uppercase ${allSlides[currentSlide].isPreOrder ? 'text-amber-500' : 'text-blue-500'}`}>
-                          {allSlides[currentSlide].isPreOrder ? 'PRE-ORDER NOW' : 'AVAILABLE IN STOCK'}
+                          {allSlides[currentSlide].isPreOrder ? 'ORDER NOW / PRE-ORDER' : 'AVAILABLE IN STOCK'}
                         </p>
                       </div>
                     </div>
@@ -1318,21 +1334,36 @@ Your task:
                       onClick={() => {
                         addToCart(selectedProduct);
                         setSelectedProduct(null);
+                        setIsCartOpen(true);
                       }}
                       className="flex-1 bg-black dark:bg-white text-white dark:text-black font-bold py-5 rounded-2xl hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
                     >
-                      <Plus className="w-5 h-5" /> Add to Cart
+                      <ShoppingCart className="w-5 h-5" /> Order Now
                     </button>
                   </div>
+                  
+                  {selectedProduct.isPreOrder && (
+                    <button
+                      onClick={() => {
+                        addToCart(selectedProduct);
+                        setSelectedProduct(null);
+                        setIsCheckoutOpen(true);
+                      }}
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <Clock className="w-4 h-4" /> Pre-Order Selection
+                    </button>
+                  )}
+                  
                   <button
                     onClick={() => {
                       addToCart(selectedProduct);
                       setSelectedProduct(null);
                       setIsCheckoutOpen(true);
                     }}
-                    className={`w-full ${selectedProduct.isPreOrder ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-5 rounded-2xl transition-all shadow-xl active:scale-95`}
+                    className={`w-full ${selectedProduct.isPreOrder ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400' : 'bg-blue-600 text-white'} font-bold py-5 rounded-2xl transition-all shadow-xl active:scale-95`}
                   >
-                    {selectedProduct.isPreOrder ? 'Pre-Order Now' : 'Buy Now'}
+                    Checkout Directly
                   </button>
                 </div>
 
@@ -2013,6 +2044,22 @@ Your task:
                       <Settings className="w-4 h-4" /> App Settings
                       <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${profileTab === 'settings' ? 'rotate-90 md:rotate-0' : 'opacity-40 group-hover:opacity-100'}`} />
                     </button>
+
+                    <div className="pt-4 mt-4 border-t border-white/20 md:hidden">
+                      <button 
+                        onClick={async () => {
+                          await supabase.auth.signOut();
+                          setUser(null);
+                          setIsAdminLoggedIn(false);
+                          setIsProfileModalOpen(false);
+                          setProfileTab(null);
+                          alert('Logged out successfully');
+                        }}
+                        className="w-full flex items-center gap-3 px-5 py-4 rounded-3xl bg-red-500/20 text-white font-bold hover:bg-red-500/30 transition-all"
+                      >
+                        <LogOut className="w-4 h-4" /> Log Out Account
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-8 relative group hidden md:block">
