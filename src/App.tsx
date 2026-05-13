@@ -210,16 +210,7 @@ const supabaseService = {
 };
 
 // --- Constants & Data ---
-const PRODUCTS: Product[] = [
-  { id: '1', name: 'AirPods Pro Max', price: 549, category: 'Audio', image: 'https://images.unsplash.com/photo-1613040809024-b4ef7ba99bc3?auto=format&fit=crop&q=80&w=400&h=500', description: 'Ultimate personal listening experience with industry-leading noise cancellation.' },
-  { id: '2', name: 'Smart LED Desk Lamp', price: 89, category: 'Lighting', image: 'https://images.unsplash.com/photo-1534073828943-f801091bb271?auto=format&fit=crop&q=80&w=400&h=500', description: 'Eye-comfort LED lamp with smart controls and wireless charging base.' },
-  { id: '3', name: 'Ultra Portable Turbo Fan', price: 45, category: 'Fan', image: 'https://images.unsplash.com/photo-1591123120675-6f7f1aae0e5b?auto=format&fit=crop&q=80&w=400&h=500', description: 'High-speed portable fan with 3-speed settings and 20-hour battery life.' },
-  { id: '4', name: 'Anti-UV Smart Umbrella', price: 35, category: 'Lifestyle', image: 'https://images.unsplash.com/photo-1517646353064-283a3f5f3e79?auto=format&fit=crop&q=80&w=400&h=500', description: 'Windproof umbrella with automatic opening and UV protection coating.' },
-  { id: '5', name: 'iPhone 15 Pro Max', price: 1399, category: 'Gadgets', image: 'https://images.unsplash.com/photo-1696446701796-da61225697cc?auto=format&fit=crop&q=80&w=400&h=500', description: 'The ultimate iPhone with Titanium design and A17 Pro chip.' },
-  { id: '6', name: 'MacBook Air M3', price: 1199, category: 'Gadgets', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&q=80&w=400&h=500', description: 'Thin, light, and powerful with the revolutionary M3 chip.' },
-  { id: '7', name: 'Sony WH-1000XM5', price: 349, category: 'Audio', image: 'https://images.unsplash.com/photo-1678124991901-ec99cc298642?auto=format&fit=crop&q=80&w=400&h=500', description: 'Best-in-class noise canceling headphones with superior sound.' },
-  { id: '8', name: 'Apple Watch Ultra 2', price: 799, category: 'Smartwatches', image: 'https://images.unsplash.com/photo-1695420130664-96944634351a?auto=format&fit=crop&q=80&w=400&h=500', description: 'The most rugged and capable Apple Watch for explorers.' }
-];
+const PRODUCTS: Product[] = [];
 const CATEGORIES = ['All', ...new Set(PRODUCTS.map((p) => p.category))];
 
 const BANGLADESH_DISTRICTS: Record<string, string[]> = {
@@ -455,7 +446,7 @@ export default function App() {
   const [secretClickCount, setSecretClickCount] = useState(0);
   
   // Products and Settings State
-  const [productsList, setProductsList] = useState<Product[]>(PRODUCTS);
+  const [productsList, setProductsList] = useState<Product[]>([]);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -641,6 +632,8 @@ Your task:
           alert('Access Denied: You do not have admin permissions.');
           // Sign out immediately if not admin
           supabase.auth.signOut();
+        setCart([]);
+        localStorage.removeItem('gadgets_ghar_cart');
         }
       }
     } catch (err: any) {
@@ -839,7 +832,11 @@ Your task:
   }, [selectedCategory, searchQuery, showPreOrderOnly, productsList]);
 
   const dynamicCategories = useMemo(() => {
-    return ['All', ...new Set(productsList.map(p => p.category))].filter(cat => cat !== 'Laptops' && cat !== 'Smartphones');
+    return ['All', ...new Set(productsList.map(p => p.category))];
+  }, [productsList]);
+
+  const allActualCategories = useMemo(() => {
+    return [...new Set(productsList.map(p => p.category))];
   }, [productsList]);
 
   return (
@@ -981,6 +978,8 @@ Your task:
                         <button 
                           onClick={async () => {
                             await supabase.auth.signOut();
+                            setCart([]);
+                            localStorage.removeItem('gadgets_ghar_cart');
                             setUser(null);
                             setIsAdminLoggedIn(false);
                             setIsUserMenuOpen(false);
@@ -2095,6 +2094,8 @@ Your task:
                         onClick={async () => {
                           await supabase.auth.signOut();
                           setUser(null);
+                          setCart([]); // Clear cart on logout
+                          localStorage.removeItem('gadgets_ghar_cart'); // Clear cart storage
                           setIsAdminLoggedIn(false);
                           setIsProfileModalOpen(false);
                           setProfileTab(null);
@@ -2873,6 +2874,8 @@ Your task:
                     onClick={async () => {
                       alert('Password changed successfully! Please log in again.');
                       await supabase.auth.signOut();
+                      setCart([]);
+                      localStorage.removeItem('gadgets_ghar_cart');
                       setUser(null);
                       setIsAdminLoggedIn(false);
                       setIsPasswordModalOpen(false);
@@ -3199,6 +3202,8 @@ Your task:
                       <button 
                          onClick={async () => {
                            await supabase.auth.signOut();
+                           setCart([]);
+                           localStorage.removeItem('gadgets_ghar_cart');
                            setIsAdminLoggedIn(false);
                            setUser(null);
                          }}
@@ -3603,7 +3608,7 @@ Your task:
                                 <RechartsResponsiveContainer width="100%" height="100%">
                                   <RechartsPieChart>
                                     <RechartsPie
-                                      data={CATEGORIES.map((cat, idx) => ({
+                                      data={allActualCategories.map((cat, idx) => ({
                                         name: cat,
                                         value: productsList.filter(p => p.category === cat).length
                                       })).filter(d => d.value > 0)}
@@ -3614,29 +3619,29 @@ Your task:
                                       paddingAngle={5}
                                       dataKey="value"
                                     >
-                                      {CATEGORIES.map((_, index) => (
+                                      {allActualCategories.map((_, index) => (
                                         <RechartsCell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899'][index % 6]} />
                                       ))}
                                     </RechartsPie>
                                     <RechartsTooltip />
                                   </RechartsPieChart>
                                 </RechartsResponsiveContainer>
-                              </div>
-                              <div className="space-y-3">
-                                {CATEGORIES.map((cat, idx) => {
-                                  const count = productsList.filter(p => p.category === cat).length;
-                                  if (count === 0) return null;
-                                  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899'];
-                                  return (
-                                    <div key={idx} className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[idx % 6] }} />
-                                        <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">{cat}</span>
+                                <div className="space-y-3">
+                                  {allActualCategories.map((cat, idx) => {
+                                    const count = productsList.filter(p => p.category === cat).length;
+                                    if (count === 0) return null;
+                                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899'];
+                                    return (
+                                      <div key={idx} className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[idx % 6] }} />
+                                          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">{cat}</span>
+                                        </div>
+                                        <span className="text-xs font-black">{((count / productsList.length) * 100).toFixed(0)}%</span>
                                       </div>
-                                      <span className="text-xs font-black">{((count / productsList.length) * 100).toFixed(0)}%</span>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -3651,7 +3656,7 @@ Your task:
                                </div>
                                <div className="h-[250px] w-full">
                                   <RechartsResponsiveContainer width="100%" height="100%">
-                                    <RechartsBarChart data={CATEGORIES.map(cat => ({
+                                    <RechartsBarChart data={allActualCategories.map(cat => ({
                                       name: cat,
                                       stock: productsList.filter(p => p.category === cat).reduce((acc, p) => acc + (p.unitsInStock || 0), 0)
                                     })).filter(d => d.stock > 0)}>
@@ -3697,7 +3702,7 @@ Your task:
                                    <div>
                                      <p className="text-xs font-black text-blue-600 uppercase tracking-widest mb-1">Market Opportunity</p>
                                      <p className="text-xs font-bold text-neutral-600 dark:text-neutral-400">
-                                       Your {CATEGORIES[0]} collection has the highest value density. Increasing variety here could boost capital efficiency.
+                                       Your {allActualCategories[0] || 'catalog'} collection has the highest value density. Increasing variety here could boost capital efficiency.
                                      </p>
                                    </div>
                                  </div>
