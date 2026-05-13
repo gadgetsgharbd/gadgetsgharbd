@@ -1356,8 +1356,8 @@ Your task:
               </button>
 
               {/* Product Image Area */}
-              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-6 md:p-8">
-                <div className="relative w-full aspect-square md:aspect-auto md:h-[400px] mb-6 flex items-center justify-center">
+              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-4 md:p-8 flex-shrink-0">
+                <div className="relative w-full aspect-square md:aspect-auto md:h-[350px] lg:h-[400px] mb-4 md:mb-6 flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={activeImageIndex}
@@ -1375,10 +1375,10 @@ Your task:
 
                 {/* Thumbnail Gallery */}
                 {(selectedProduct.images && selectedProduct.images.some(img => img)) && (
-                  <div className="flex gap-3 justify-center w-full px-2 overflow-x-auto py-2 scrollbar-hide">
+                  <div className="flex gap-3 w-full px-2 overflow-x-auto py-2 scrollbar-hide justify-start md:justify-center items-center">
                     <button
                       onClick={() => setActiveImageIndex(0)}
-                      className={`flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      className={`flex-shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
                     >
                       <img src={selectedProduct.image} alt="Thumbnail 1" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </button>
@@ -1388,7 +1388,7 @@ Your task:
                         <button
                           key={idx}
                           onClick={() => setActiveImageIndex(idx + 1)}
-                          className={`flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                          className={`flex-shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
                         >
                           <img src={img} alt={`Thumbnail ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </button>
@@ -1399,16 +1399,16 @@ Your task:
               </div>
 
               {/* Product Info Area */}
-              <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-center overflow-y-auto">
-                <div className="mb-8">
+              <div className="w-full md:w-1/2 p-6 md:p-12 flex flex-col justify-center overflow-y-auto">
+                <div className="mb-6 md:mb-8">
                   <span className="text-blue-600 font-bold text-xs uppercase tracking-widest mb-2 block font-display">
                     {selectedProduct.category}
                   </span>
-                  <h2 className="text-3xl md:text-4xl font-black mb-4 font-display">
+                  <h2 className="text-2xl md:text-4xl font-black mb-3 md:mb-4 font-display leading-tight">
                     {selectedProduct.name}
                   </h2>
-                  <div className="text-3xl font-black mb-4 text-neutral-900 dark:text-white flex items-baseline">
-                    <span className="text-2xl mr-1 font-black text-emerald-600">৳</span>{selectedProduct.price}
+                  <div className="text-2xl md:text-3xl font-black mb-4 text-neutral-900 dark:text-white flex items-baseline py-1">
+                    <span className="text-xl md:text-2xl mr-1 font-black text-emerald-600">৳</span>{selectedProduct.price}
                   </div>
                   <div className="w-16 h-1 bg-blue-600 rounded-full mb-6" />
                   <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed text-lg">
