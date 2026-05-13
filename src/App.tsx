@@ -107,7 +107,14 @@ if (!supabaseUrl.startsWith('http')) {
     console.error("CRITICAL: Invalid Supabase URL configuration:", supabaseUrl);
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage
+  }
+});
 
 const supabaseService = {
   async getProducts() {
@@ -372,6 +379,55 @@ export default function App() {
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
   const [orderNotifications, setOrderNotifications] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthRestored, setIsAuthRestored] = useState(false);
+
+  // Initial Auth Restoration
+  useEffect(() => {
+    const handleAuthSession = (session: any) => {
+      if (session) {
+        const sUser = session.user;
+        const initialUser: User = {
+          uid: sUser.id,
+          email: sUser.email || sUser.user_metadata?.email || '',
+          displayName: sUser.user_metadata?.full_name || sUser.user_metadata?.display_name || 'User',
+          photoURL: sUser.user_metadata?.avatar_url || null,
+          phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || '',
+          address: sUser.user_metadata?.address || '',
+          orders: []
+        };
+        setUser(initialUser);
+
+        supabaseService.getOrdersByUserId(sUser.id).then(userOrders => {
+          setUser(prev => prev && prev.uid === sUser.id ? { ...prev, orders: userOrders } : prev);
+        }).catch(err => {
+          console.error('Order fetch failure:', err);
+        });
+        
+        if (sUser.user_metadata?.role === 'admin') {
+          setIsAdminLoggedIn(true);
+        }
+      } else {
+        setUser(null);
+        setIsAdminLoggedIn(false);
+      }
+      setIsAuthRestored(true);
+    };
+
+    // Recover session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleAuthSession(session);
+    });
+
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event change:', event);
+      handleAuthSession(session);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Pre-fill checkout info from user profile
   useEffect(() => {
@@ -414,7 +470,7 @@ export default function App() {
     ]
   });
 
-  // Load Initial Data from Supabase
+  // Load Initial Global Data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -448,49 +504,6 @@ export default function App() {
     };
 
     fetchData();
-
-    const handleAuthSession = (session: any) => {
-      if (session) {
-        const sUser = session.user;
-        setUser({
-          uid: sUser.id,
-          email: sUser.email || sUser.user_metadata?.email || '',
-          displayName: sUser.user_metadata?.full_name || sUser.user_metadata?.display_name || 'User',
-          photoURL: sUser.user_metadata?.avatar_url || null,
-          phoneNumber: sUser.user_metadata?.phone_number || sUser.phone || '',
-          address: sUser.user_metadata?.address || '',
-          orders: []
-        });
-
-        supabaseService.getOrdersByUserId(sUser.id).then(userOrders => {
-          setUser(prev => prev && prev.uid === sUser.id ? { ...prev, orders: userOrders } : prev);
-        }).catch(err => {
-          console.error('Failed to fetch user orders in background:', err);
-        });
-        
-        if (sUser.user_metadata?.role === 'admin') {
-          setIsAdminLoggedIn(true);
-        }
-      } else {
-        setUser(null);
-        setIsAdminLoggedIn(false);
-      }
-    };
-
-    // Initial session recovery
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) handleAuthSession(session);
-    });
-
-    // Global Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event);
-      handleAuthSession(session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
   // Admin Product Form State
