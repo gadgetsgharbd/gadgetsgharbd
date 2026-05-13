@@ -17,6 +17,7 @@ export interface Product {
   price: number;
   category: string;
   image: string;
+  images?: string[]; // Additional pictures
   description: string;
   unitsInStock?: number;
   isFeatured?: boolean;
@@ -123,14 +124,40 @@ const supabaseService = {
     return data as Product[];
   },
   async addProduct(product: Product) {
-    const { data, error } = await supabase.from('products').insert([product]).select();
-    if (error) throw error;
-    return data[0] as Product;
+    try {
+      const { data, error } = await supabase.from('products').insert([product]).select();
+      if (!error && data) return data[0] as Product;
+      
+      // Fallback if images column doesn't exist
+      if (error && (error.message.includes('column') || error.code === '42703')) {
+        const { images, ...rest } = product;
+        const { data: fallbackData, error: fallbackError } = await supabase.from('products').insert([rest]).select();
+        if (!fallbackError && fallbackData) return { ...fallbackData[0], images } as Product;
+        throw fallbackError || error;
+      }
+      throw error;
+    } catch (err) {
+      console.error('addProduct failure:', err);
+      throw err;
+    }
   },
   async updateProduct(product: Product) {
-    const { data, error } = await supabase.from('products').update(product).eq('id', product.id).select();
-    if (error) throw error;
-    return data[0] as Product;
+    try {
+      const { data, error } = await supabase.from('products').update(product).eq('id', product.id).select();
+      if (!error && data) return data[0] as Product;
+
+      // Fallback if images column doesn't exist
+      if (error && (error.message.includes('column') || error.code === '42703')) {
+        const { images, ...rest } = product;
+        const { data: fallbackData, error: fallbackError } = await supabase.from('products').update(rest).eq('id', product.id).select();
+        if (!fallbackError && fallbackData) return { ...fallbackData[0], images } as Product;
+        throw fallbackError || error;
+      }
+      throw error;
+    } catch (err) {
+      console.error('updateProduct failure:', err);
+      throw err;
+    }
   },
   async deleteProduct(id: string) {
     const { error } = await supabase.from('products').delete().eq('id', id);
@@ -705,6 +732,7 @@ Your task:
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [tempPhoto, setTempPhoto] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -1123,6 +1151,7 @@ Your task:
                       onClick={() => {
                         if (allSlides[currentSlide].type === 'product') {
                           setSelectedProduct(allSlides[currentSlide].data as Product);
+                          setActiveImageIndex(0);
                         } else {
                           const productSection = document.getElementById('products');
                           productSection?.scrollIntoView({ behavior: 'smooth' });
@@ -1235,7 +1264,10 @@ Your task:
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.3 }}
                   className="group cursor-pointer"
-                  onClick={() => setSelectedProduct(product)}
+                  onClick={() => {
+                    setSelectedProduct(product);
+                    setActiveImageIndex(0);
+                  }}
                 >
                   <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-4">
                     <AnimatePresence>
@@ -1324,16 +1356,46 @@ Your task:
               </button>
 
               {/* Product Image Area */}
-              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center p-8">
-                <motion.img
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  src={selectedProduct.image}
-                  alt={selectedProduct.name}
-                  className="w-full h-full object-contain max-h-[400px] md:max-h-none rounded-2xl shadow-xl"
-                  referrerPolicy="no-referrer"
-                />
+              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-6 md:p-8">
+                <div className="relative w-full aspect-square md:aspect-auto md:h-[400px] mb-6 flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    <motion.img
+                      key={activeImageIndex}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 1.05 }}
+                      transition={{ duration: 0.3 }}
+                      src={activeImageIndex === 0 ? selectedProduct.image : selectedProduct.images?.[activeImageIndex - 1]}
+                      alt={selectedProduct.name}
+                      className="w-full h-full object-contain rounded-2xl shadow-xl"
+                      referrerPolicy="no-referrer"
+                    />
+                  </AnimatePresence>
+                </div>
+
+                {/* Thumbnail Gallery */}
+                {(selectedProduct.images && selectedProduct.images.some(img => img)) && (
+                  <div className="flex gap-3 justify-center w-full px-2 overflow-x-auto py-2 scrollbar-hide">
+                    <button
+                      onClick={() => setActiveImageIndex(0)}
+                      className={`flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    >
+                      <img src={selectedProduct.image} alt="Thumbnail 1" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </button>
+                    {selectedProduct.images.map((img, idx) => {
+                      if (!img) return null;
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveImageIndex(idx + 1)}
+                          className={`flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                        >
+                          <img src={img} alt={`Thumbnail ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Product Info Area */}
@@ -3749,7 +3811,7 @@ Your task:
                           <div className="flex justify-between items-center mb-8">
                             <h3 className="text-xl font-black font-display uppercase italic tracking-tight">Product Catalog ({productsList.length})</h3>
                             <button 
-                              onClick={() => setEditingProduct({ id: 'new', name: '', price: undefined, category: 'Accessories', image: '', description: '', isFeatured: false, isPreOrder: false, preOrderDays: '', hasWarranty: false, warrantyDetails: '', warrantyTime: '', warrantyConditions: '' })}
+                              onClick={() => setEditingProduct({ id: 'new', name: '', price: undefined, category: 'Accessories', image: '', images: ['', '', '', ''], description: '', isFeatured: false, isPreOrder: false, preOrderDays: '', hasWarranty: false, warrantyDetails: '', warrantyTime: '', warrantyConditions: '' })}
                               className="bg-black dark:bg-white text-white dark:text-black px-6 py-3 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-lg"
                             >
                               <Plus className="w-4 h-4" /> Add Product
@@ -3779,7 +3841,7 @@ Your task:
                                 </div>
                                  <div className="flex items-center gap-2">
                                    <button 
-                                     onClick={() => setEditingProduct(product)}
+                                     onClick={() => setEditingProduct({ ...product, images: product.images || ['', '', '', ''] })}
                                      className="p-2 bg-white dark:bg-neutral-700 rounded-lg hover:text-blue-600 shadow-sm transition-colors"
                                    >
                                      <Settings className="w-4 h-4" />
@@ -3981,9 +4043,9 @@ Your task:
                        />
                     </div>
                  </div>
-                 <div className="space-y-2">
+                  <div className="space-y-2">
                     <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex justify-between items-center">
-                      Image 
+                      Main Image 
                       <span className="text-[8px] font-normal lowercase">(URL or Upload)</span>
                     </label>
                     <div className="flex gap-2">
@@ -3991,7 +4053,7 @@ Your task:
                         type="text"
                         value={editingProduct.image}
                         onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                        placeholder="https://..."
+                        placeholder="Main Image URL"
                         className="flex-1 bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-600 transition-all dark:text-white"
                       />
                       <label className="w-14 h-14 bg-neutral-100 dark:bg-neutral-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors flex-shrink-0">
@@ -4012,6 +4074,51 @@ Your task:
                           }}
                         />
                       </label>
+                    </div>
+                 </div>
+
+                 {/* Additional optional images */}
+                 <div className="space-y-4 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">Optional Additional Images</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[0, 1, 2, 3].map((idx) => (
+                        <div key={idx} className="space-y-2">
+                          <label className="text-[8px] font-bold text-neutral-400 uppercase tracking-tighter">Image {idx + 2}</label>
+                          <div className="flex gap-2">
+                            <input 
+                              type="text"
+                              value={editingProduct.images?.[idx] || ''}
+                              onChange={(e) => {
+                                const newImages = [...(editingProduct.images || ['', '', '', ''])];
+                                newImages[idx] = e.target.value;
+                                setEditingProduct({ ...editingProduct, images: newImages });
+                              }}
+                              placeholder={`URL ${idx + 2}`}
+                              className="flex-1 bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-2 text-[10px] font-bold outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                            />
+                             <label className="w-8 h-8 bg-neutral-100 dark:bg-neutral-800 rounded-lg flex items-center justify-center cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors flex-shrink-0">
+                              <Camera className="w-3 h-3 text-neutral-500" />
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      const newImages = [...(editingProduct.images || ['', '', '', ''])];
+                                      newImages[idx] = reader.result as string;
+                                      setEditingProduct({ ...editingProduct, images: newImages });
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                  </div>
                  <div className="space-y-2">
@@ -4125,9 +4232,9 @@ Your task:
                          try {
                            const priceNum = Number(editingProduct.price) || 0;
                            const stockNum = editingProduct.unitsInStock !== undefined ? Number(editingProduct.unitsInStock) : undefined;
+                           const filteredImages = (editingProduct.images || []).filter((img: string) => img && img.trim() !== '');
                            
                            // Create a clean payload with only valid columns
-                           // We use the exact keys that are likely in the DB based on existing code
                            const payload: any = { 
                              id: editingProduct.id,
                              name: editingProduct.name,
@@ -4144,6 +4251,11 @@ Your task:
                              warranty_time: editingProduct.warrantyTime || '',
                              warranty_conditions: editingProduct.warrantyConditions || ''
                            };
+
+                           // Only add images if there are actually some pictures
+                           if (filteredImages.length > 0) {
+                             payload.images = filteredImages;
+                           }
 
                             if (editingProduct.id === 'new') {
                                const newId = `P-${Date.now()}`;
