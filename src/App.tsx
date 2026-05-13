@@ -449,13 +449,9 @@ export default function App() {
 
     fetchData();
 
-    // Global Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event);
+    const handleAuthSession = (session: any) => {
       if (session) {
         const sUser = session.user;
-        
-        // Set user initial state
         setUser({
           uid: sUser.id,
           email: sUser.email || sUser.user_metadata?.email || '',
@@ -466,14 +462,12 @@ export default function App() {
           orders: []
         });
 
-        // Fetch orders in background
         supabaseService.getOrdersByUserId(sUser.id).then(userOrders => {
           setUser(prev => prev && prev.uid === sUser.id ? { ...prev, orders: userOrders } : prev);
         }).catch(err => {
           console.error('Failed to fetch user orders in background:', err);
         });
         
-        // Persistent Admin Login check from metadata
         if (sUser.user_metadata?.role === 'admin') {
           setIsAdminLoggedIn(true);
         }
@@ -481,6 +475,17 @@ export default function App() {
         setUser(null);
         setIsAdminLoggedIn(false);
       }
+    };
+
+    // Initial session recovery
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) handleAuthSession(session);
+    });
+
+    // Global Auth State Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      handleAuthSession(session);
     });
 
     return () => {
