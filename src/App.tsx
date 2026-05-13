@@ -38,7 +38,7 @@ export interface Order {
   items: CartItem[];
   total: number;
   date: string;
-  status: 'Pending' | 'Approved' | 'Cancelled' | 'Shipped';
+  status: 'Pending' | 'Approved' | 'Cancelled' | 'Shipped' | 'Delivered';
   customerDetails?: {
     firstName: string;
     lastName: string;
@@ -783,6 +783,11 @@ Your task:
 
   // Cart Logic
   const addToCart = (product: Product) => {
+    if (!user) {
+      setAuthMode('login');
+      setIsAuthModalOpen(true);
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
@@ -1350,6 +1355,11 @@ Your task:
                   <div className="flex gap-4">
                     <button
                       onClick={() => {
+                        if (!user) {
+                          setAuthMode('login');
+                          setIsAuthModalOpen(true);
+                          return;
+                        }
                         addToCart(selectedProduct);
                         setSelectedProduct(null);
                         setIsCartOpen(true);
@@ -1363,6 +1373,11 @@ Your task:
                   {selectedProduct.isPreOrder && (
                     <button
                       onClick={() => {
+                        if (!user) {
+                          setAuthMode('login');
+                          setIsAuthModalOpen(true);
+                          return;
+                        }
                         addToCart(selectedProduct);
                         setSelectedProduct(null);
                         setIsCheckoutOpen(true);
@@ -1375,6 +1390,11 @@ Your task:
                   
                   <button
                     onClick={() => {
+                      if (!user) {
+                        setAuthMode('login');
+                        setIsAuthModalOpen(true);
+                        return;
+                      }
                       addToCart(selectedProduct);
                       setSelectedProduct(null);
                       setIsCheckoutOpen(true);
@@ -1657,7 +1677,14 @@ Your task:
                   </div>
                   <p className="text-xs text-neutral-400 dark:text-neutral-500">Shipping and taxes calculated at checkout.</p>
                   <button 
-                    onClick={() => setIsCheckoutOpen(true)}
+                    onClick={() => {
+                      if (!user) {
+                        setAuthMode('login');
+                        setIsAuthModalOpen(true);
+                        return;
+                      }
+                      setIsCheckoutOpen(true);
+                    }}
                     className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-shadow shadow-lg active:scale-[0.98] transition-transform"
                   >
                     Proceed to Checkout
@@ -2306,6 +2333,11 @@ Your task:
                                   <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-100 shadow-[0_2px_10px_-3px_rgba(239,68,68,0.2)]">
                                     <XCircle className="w-3 h-3" />
                                     Cancelled
+                                  </span>
+                                ) : order.status === 'Delivered' ? (
+                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Delivered
                                   </span>
                                 ) : order.status === 'Pending' ? (
                                   <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-700 border border-amber-100 shadow-[0_2px_10px_-3px_rgba(245,158,11,0.2)]">
@@ -3398,6 +3430,24 @@ Your task:
                                           </button>
                                         </>
                                       )}
+
+                                      {order.status === 'Approved' && (
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await supabaseService.updateOrderStatus(order.id, 'Delivered');
+                                              setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o));
+                                              alert(`Order ${order.id} marked as Delivered!`);
+                                            } catch (err) {
+                                              console.error('Failed to mark as delivered:', err);
+                                            }
+                                          }}
+                                          className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-xl shadow-emerald-500/20 active:scale-95"
+                                        >
+                                          <Truck className="w-4 h-4" /> Mark as Delivered
+                                        </button>
+                                      )}
+                                      
                                       {order.status !== 'Pending' && (
                                         <div className="flex gap-2">
                                           <button
