@@ -1346,18 +1346,18 @@ Your task:
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative w-full max-w-4xl bg-white dark:bg-neutral-900 rounded-[32px] overflow-hidden shadow-2xl flex flex-col md:flex-row h-[90vh] md:h-auto max-h-[90vh]"
+              className="relative w-full max-w-4xl bg-white dark:bg-neutral-900 rounded-[32px] overflow-hidden shadow-2xl flex flex-col md:flex-row h-full md:h-auto max-h-[90vh]"
             >
               <button 
                 onClick={() => setSelectedProduct(null)}
-                className="absolute top-6 right-6 z-10 p-2 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 text-neutral-900 dark:text-white rounded-full transition-colors backdrop-blur-md"
+                className="absolute top-4 right-4 md:top-6 md:right-6 z-[70] p-2 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 text-neutral-900 dark:text-white rounded-full transition-all backdrop-blur-md"
               >
                 <X className="w-6 h-6" />
               </button>
 
               {/* Product Image Area */}
-              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-4 md:p-8 flex-shrink-0 min-h-[300px] md:min-h-0">
-                <div className="relative w-full h-[220px] md:h-[350px] lg:h-[400px] mb-4 md:mb-6 flex items-center justify-center">
+              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-3 md:p-8 flex-shrink-0">
+                <div className="relative w-full h-[200px] md:h-[350px] lg:h-[400px] mb-2 md:mb-6 flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={activeImageIndex}
@@ -1367,7 +1367,7 @@ Your task:
                       transition={{ duration: 0.3 }}
                       src={activeImageIndex === 0 ? selectedProduct.image : selectedProduct.images?.[activeImageIndex - 1]}
                       alt={selectedProduct.name}
-                      className="w-full h-full object-contain rounded-2xl shadow-xl"
+                      className="w-full h-full object-contain rounded-2xl drop-shadow-xl"
                       referrerPolicy="no-referrer"
                     />
                   </AnimatePresence>
@@ -1375,10 +1375,10 @@ Your task:
 
                 {/* Thumbnail Gallery */}
                 {(selectedProduct.images && selectedProduct.images.some(img => img)) && (
-                  <div className="flex gap-2 md:gap-3 w-full px-2 overflow-x-auto py-2 scrollbar-hide justify-start md:justify-center items-center">
+                  <div className="flex gap-2 w-full px-2 overflow-x-auto py-2 scrollbar-hide justify-start md:justify-center items-center">
                     <button
                       onClick={() => setActiveImageIndex(0)}
-                      className={`flex-shrink-0 w-10 h-10 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      className={`flex-shrink-0 w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-105' : 'border-transparent opacity-60'}`}
                     >
                       <img src={selectedProduct.image} alt="Thumbnail 1" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </button>
@@ -1388,7 +1388,7 @@ Your task:
                         <button
                           key={idx}
                           onClick={() => setActiveImageIndex(idx + 1)}
-                          className={`flex-shrink-0 w-10 h-10 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                          className={`flex-shrink-0 w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-105' : 'border-transparent opacity-60'}`}
                         >
                           <img src={img} alt={`Thumbnail ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </button>
@@ -1399,7 +1399,7 @@ Your task:
               </div>
 
               {/* Product Info Area */}
-              <div className="w-full md:w-1/2 p-5 md:p-12 flex flex-col justify-start md:justify-center overflow-y-auto">
+              <div className="w-full md:w-1/2 p-5 md:p-12 flex flex-col justify-start md:justify-center overflow-y-auto flex-1 overscroll-contain">
                 <div className="mb-4 md:mb-8">
                   <span className="text-blue-600 font-bold text-[10px] md:text-xs uppercase tracking-widest mb-1 md:mb-2 block font-display">
                     {selectedProduct.category}
@@ -1407,11 +1407,12 @@ Your task:
                   <h2 className="text-xl md:text-4xl font-black mb-2 md:mb-4 font-display leading-tight text-neutral-900 dark:text-white">
                     {selectedProduct.name}
                   </h2>
-                  <div className="text-2xl md:text-3xl font-black mb-3 md:mb-4 text-neutral-900 dark:text-white flex items-center py-1">
-                    <span className="text-xl md:text-2xl mr-1 font-black text-emerald-600">৳</span>{selectedProduct.price}
+                  <div className="text-2xl md:text-4xl font-black mb-3 md:mb-4 text-neutral-900 dark:text-white flex items-center py-2 h-10 md:h-14">
+                    <span className="text-xl md:text-2xl mr-1 font-black text-emerald-600 self-center">৳</span>
+                    <span className="flex-1">{selectedProduct.price}</span>
                   </div>
                   <div className="w-12 md:w-16 h-1 bg-blue-600 rounded-full mb-4 md:mb-6" />
-                  <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed text-base md:text-lg">
+                  <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed text-sm md:text-lg">
                     {selectedProduct.description}
                   </p>
                 </div>
