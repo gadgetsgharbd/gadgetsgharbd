@@ -327,6 +327,7 @@ export default function App() {
   const [lastVisualMatch, setLastVisualMatch] = useState<string | null>(null);
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<'details' | 'payment'>('details');
   const [paymentMethod, setPaymentMethod] = useState<'bkash' | 'nagad' | null>(null);
   const [transactionId, setTransactionId] = useState('');
@@ -813,6 +814,9 @@ Your task:
     cart.reduce((total, item) => total + item.price * item.quantity, 0),
     [cart]
   );
+
+  const activeCheckoutItems = useMemo(() => buyNowItem ? [buyNowItem] : cart, [buyNowItem, cart]);
+  const activeCheckoutTotal = useMemo(() => buyNowItem ? buyNowItem.price * buyNowItem.quantity : cartTotal, [buyNowItem, cartTotal]);
 
   const cartCount = useMemo(() =>
     cart.reduce((total, item) => total + item.quantity, 0),
@@ -1351,42 +1355,7 @@ Your task:
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => {
-                        if (!user) {
-                          setAuthMode('login');
-                          setIsAuthModalOpen(true);
-                          return;
-                        }
-                        addToCart(selectedProduct);
-                        setSelectedProduct(null);
-                        setIsCartOpen(true);
-                      }}
-                      className="flex-1 bg-black dark:bg-white text-white dark:text-black font-bold py-5 rounded-2xl hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
-                    >
-                      <ShoppingCart className="w-5 h-5" /> Order Now
-                    </button>
-                  </div>
-                  
-                  {selectedProduct.isPreOrder && (
-                    <button
-                      onClick={() => {
-                        if (!user) {
-                          setAuthMode('login');
-                          setIsAuthModalOpen(true);
-                          return;
-                        }
-                        addToCart(selectedProduct);
-                        setSelectedProduct(null);
-                        setIsCheckoutOpen(true);
-                      }}
-                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
-                    >
-                      <Clock className="w-4 h-4" /> Pre-Order Selection
-                    </button>
-                  )}
-                  
+                  {/* Common Add to Cart button */}
                   <button
                     onClick={() => {
                       if (!user) {
@@ -1396,12 +1365,48 @@ Your task:
                       }
                       addToCart(selectedProduct);
                       setSelectedProduct(null);
-                      setIsCheckoutOpen(true);
+                      setIsCartOpen(true);
                     }}
-                    className={`w-full ${selectedProduct.isPreOrder ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400' : 'bg-blue-600 text-white'} font-bold py-5 rounded-2xl transition-all shadow-xl active:scale-95`}
+                    className="w-full bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold py-5 rounded-2xl hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 border border-neutral-200 dark:border-neutral-700"
                   >
-                    Checkout Directly
+                    <Plus className="w-5 h-5" /> Add to Cart
                   </button>
+
+                  {selectedProduct.isPreOrder ? (
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          setAuthMode('login');
+                          setIsAuthModalOpen(true);
+                          return;
+                        }
+                        const bItem: CartItem = { ...selectedProduct, quantity: 1 };
+                        setBuyNowItem(bItem);
+                        setSelectedProduct(null);
+                        setIsCheckoutOpen(true);
+                      }}
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <Clock className="w-5 h-5" /> Pre-Order Now
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          setAuthMode('login');
+                          setIsAuthModalOpen(true);
+                          return;
+                        }
+                        const bItem: CartItem = { ...selectedProduct, quantity: 1 };
+                        setBuyNowItem(bItem);
+                        setSelectedProduct(null);
+                        setIsCheckoutOpen(true);
+                      }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <ShoppingCart className="w-5 h-5" /> Order Now
+                    </button>
+                  )}
                 </div>
 
                 <div className="mt-8 pt-8 border-t border-neutral-100 dark:border-neutral-800 grid grid-cols-2 gap-4">
@@ -1682,6 +1687,7 @@ Your task:
                         setIsAuthModalOpen(true);
                         return;
                       }
+                      setBuyNowItem(null);
                       setIsCheckoutOpen(true);
                     }}
                     className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-shadow shadow-lg active:scale-[0.98] transition-transform"
@@ -1706,6 +1712,7 @@ Your task:
               onClick={() => {
                 setIsCheckoutOpen(false);
                 setCheckoutStep('details');
+                setBuyNowItem(null);
               }}
               className="absolute inset-0 bg-black/60 backdrop-blur-md"
             />
@@ -1729,6 +1736,7 @@ Your task:
                   onClick={() => {
                     setIsCheckoutOpen(false);
                     setCheckoutStep('details');
+                    setBuyNowItem(null);
                   }} 
                   className="p-3 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-2xl transition-all"
                 >
@@ -1891,7 +1899,7 @@ Your task:
                   <div>
                     <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Payable Amount</span>
                     <span className="text-3xl font-black font-display tracking-tight text-neutral-900 dark:text-white flex items-baseline">
-                      <span className="text-2xl mr-1 font-black text-emerald-600">৳</span>{cartTotal.toFixed(2)}
+                      <span className="text-2xl mr-1 font-black text-emerald-600">৳</span>{activeCheckoutTotal.toFixed(2)}
                     </span>
                   </div>
                   <div className="text-right">
@@ -1937,8 +1945,8 @@ Your task:
                       const newOrder: Order = {
                         id: newOrderId,
                         userId: currentUser.uid,
-                        items: [...cart],
-                        total: cartTotal,
+                        items: [...activeCheckoutItems],
+                        total: activeCheckoutTotal,
                         date: new Date().toLocaleString(),
                         status: 'Pending',
                         customerDetails: {
@@ -1982,7 +1990,12 @@ Your task:
 
                           setAllOrders(prev => [newOrder, ...prev]);
                           
-                          setCart([]);
+                          if (buyNowItem) {
+                            setBuyNowItem(null);
+                          } else {
+                            setCart([]);
+                          }
+                          
                           setIsCheckoutOpen(false);
                           setIsCartOpen(false);
                           setProfileTab('orders');
