@@ -247,27 +247,76 @@ const supabaseService = {
   },
   async getOrdersByUserId(userId: string) {
     try {
+      // Fetch both local and server
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
       const filteredLocal = localOrders.filter((o: any) => o.userId === userId || o.user_id === userId);
 
-      // Try user_id (Postgres convention)
-      const { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('date', { ascending: false });
+      // Try user_id and userId
+      let { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('date', { ascending: false });
       
-      let serverOrders: any[] = [];
-      if (!error && data) {
-        serverOrders = data;
-      } else {
-        // Fallback to userId (CamelCase convention)
+      if (error) {
         const { data: data2, error: error2 } = await supabase.from('orders').select('*').eq('userId', userId).order('date', { ascending: false });
-        if (!error2 && data2) serverOrders = data2;
+        if (!error2 && data2) {
+          data = data2;
+          error = null;
+        }
       }
       
-      // Combine and deduplicate
-      const combined = [...filteredLocal];
-      serverOrders.forEach(so => {
-        if (!combined.find(lo => lo.id === so.id)) combined.push(so);
+      const serverOrders = (data || []) as any[];
+      const ordersMap = new Map();
+      
+      // Seed with local
+      filteredLocal.forEach((lo: any) => ordersMap.set(lo.id, lo));
+      
+      // Override with server (parsed)
+      serverOrders.forEach((so: any) => {
+        const sId = so.id || so.order_id || so.id_order || `ORD-${Math.random().toString(36).substr(2, 5)}`;
+        
+        let parsedItems = so.items;
+        if (typeof so.items === 'string') {
+          try { parsedItems = JSON.parse(so.items); } catch(e) { parsedItems = []; }
+        } else if (so.items_json) {
+          try { parsedItems = JSON.parse(so.items_json); } catch(e) { parsedItems = []; }
+        }
+        if (!Array.isArray(parsedItems)) parsedItems = [];
+
+        let parsedCustomer = so.customer_details || so.customerDetails;
+        if (typeof parsedCustomer === 'string') {
+          try { parsedCustomer = JSON.parse(parsedCustomer); } catch(e) {}
+        }
+        
+        let parsedPayment = so.payment_details || so.paymentDetails;
+        if (typeof parsedPayment === 'string') {
+          try { parsedPayment = JSON.parse(parsedPayment); } catch(e) {}
+        }
+
+        const reconstructed: Order = {
+          ...so,
+          id: sId,
+          userId: so.user_id || so.userId || so.customer_id,
+          items: parsedItems,
+          total: Number(so.total || so.amount || so.total_amount || 0),
+          date: so.date || so.created_at || new Date().toISOString(),
+          status: so.status || 'Pending',
+          customerDetails: parsedCustomer || {
+            firstName: so.customer_name?.split(' ')[0] || 'Customer',
+            lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
+            phone: so.phone || so.customer_phone || '',
+            email: so.email || '',
+            district: so.district || '',
+            thana: so.thana || '',
+            fullAddress: so.address || so.full_address || ''
+          },
+          paymentDetails: parsedPayment || {
+            method: (so.payment_method || 'bkash').toLowerCase() as any,
+            transactionId: so.transaction_id || so.trx_id || ''
+          }
+        };
+        
+        ordersMap.set(sId, reconstructed);
       });
       
+      const combined = Array.from(ordersMap.values());
       return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) as Order[];
     } catch (err) {
       console.error('getOrdersByUserId failure:', err);
@@ -762,6 +811,19 @@ export default function App() {
       alert('Note: Order status updated locally. It will sync with server shortly.');
     }
   };
+
+  useEffect(() => {
+    if (isProfileModalOpen && user?.id) {
+       supabaseService.getOrdersByUserId(user.id)
+         .then(orders => {
+            setUser(prev => {
+              if (!prev) return null;
+              return { ...prev, orders };
+            });
+         })
+         .catch(err => console.error('Profile refresh failed:', err));
+    }
+  }, [isProfileModalOpen, user?.id]);
 
   useEffect(() => {
     if (isAdminPanelOpen) {
@@ -3748,6 +3810,13 @@ Your task:
                                               try {
                                                 await supabaseService.updateOrderStatus(order.id, 'Approved');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Approved' } : o));
+                                                // Sync user state if admin is also the customer
+                                                if (user?.id === order.userId) {
+                                                  setUser(prev => prev ? {
+                                                    ...prev,
+                                                    orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Approved' } : o)
+                                                  } : null);
+                                                }
                                                 alert(`Order ${order.id} Approved Successfully!`);
                                               } catch (err) {
                                                 console.error('Failed to update status:', err);
@@ -3762,6 +3831,13 @@ Your task:
                                               try {
                                                 await supabaseService.updateOrderStatus(order.id, 'Cancelled');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o));
+                                                // Sync user state if admin is also the customer
+                                                if (user?.id === order.userId) {
+                                                  setUser(prev => prev ? {
+                                                    ...prev,
+                                                    orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o)
+                                                  } : null);
+                                                }
                                                 alert(`Order ${order.id} Cancelled.`);
                                               } catch (err) {
                                                 console.error('Failed to cancel order:', err);
@@ -3780,6 +3856,13 @@ Your task:
                                             try {
                                               await supabaseService.updateOrderStatus(order.id, 'Delivered');
                                               setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o));
+                                              // Sync user state if admin is also the customer
+                                              if (user?.id === order.userId) {
+                                                setUser(prev => prev ? {
+                                                  ...prev,
+                                                  orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o)
+                                                } : null);
+                                              }
                                               alert(`Order ${order.id} marked as Delivered!`);
                                             } catch (err) {
                                               console.error('Failed to mark as delivered:', err);
@@ -3798,6 +3881,13 @@ Your task:
                                               try {
                                                 await supabaseService.updateOrderStatus(order.id, 'Pending');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Pending' } : o));
+                                                // Sync user state
+                                                if (user?.id === order.userId) {
+                                                  setUser(prev => prev ? {
+                                                    ...prev,
+                                                    orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Pending' } : o)
+                                                  } : null);
+                                                }
                                               } catch (err) {
                                                 console.error('Failed to restore order:', err);
                                               }
