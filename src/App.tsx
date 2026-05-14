@@ -166,19 +166,21 @@ const supabaseService = {
   },
   async getOrders() {
     try {
-      // Try both common table names
-      let { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false });
+      const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
+      let serverOrders: Order[] = [];
       
-      if (error) {
-        console.warn('Fetching "orders" failed, trying "Orders":', error);
-        const { data: data2, error: error2 } = await supabase.from('Orders').select('*').order('date', { ascending: false });
-        if (!error2 && data2) {
-          data = data2;
-          error = null;
+      for (const table of tableNames) {
+        try {
+          const { data, error } = await supabase.from(table).select('*').order('date', { ascending: false });
+          if (!error && data && data.length > 0) {
+            serverOrders = data as Order[];
+            break;
+          }
+        } catch (e) {
+          continue;
         }
       }
       
-      const serverOrders = (data || []) as Order[];
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
       
       // Merge logic: use a Map keyed by ID to deduplicate and handle updates
@@ -255,18 +257,26 @@ const supabaseService = {
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
       const filteredLocal = localOrders.filter((o: any) => o.userId === userId || o.user_id === userId);
 
-      // Try user_id and userId
-      let { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('date', { ascending: false });
+      const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
+      let serverOrders: any[] = [];
       
-      if (error) {
-        const { data: data2, error: error2 } = await supabase.from('orders').select('*').eq('userId', userId).order('date', { ascending: false });
-        if (!error2 && data2) {
-          data = data2;
-          error = null;
+      for (const table of tableNames) {
+        try {
+          let { data, error } = await supabase.from(table).select('*').eq('user_id', userId).order('date', { ascending: false });
+          if (error) {
+            const { data: d2, error: e2 } = await supabase.from(table).select('*').eq('userId', userId).order('date', { ascending: false });
+            if (!e2 && d2) data = d2;
+          }
+          
+          if (data && data.length > 0) {
+            serverOrders = data;
+            break;
+          }
+        } catch (e) {
+          continue;
         }
       }
       
-      const serverOrders = (data || []) as any[];
       const ordersMap = new Map();
       
       // Seed with local
@@ -338,7 +348,8 @@ const supabaseService = {
       localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify([order, ...localOrders]));
 
       // Create a copy to manipulate
-      const baseOrder = { ...order };
+      const dbUserId = (order.userId === 'guest' || !order.userId) ? null : order.userId;
+      const baseOrder = { ...order, userId: dbUserId };
       if (!baseOrder.date) baseOrder.date = new Date().toISOString();
       
       const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
@@ -352,7 +363,7 @@ const supabaseService = {
 
           // Attempt 2: Flattened to individual columns (common for text columns)
           const flattened = {
-            user_id: order.userId || null,
+            user_id: dbUserId,
             total_amount: order.total,
             status: order.status || 'Pending',
             customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
@@ -372,7 +383,7 @@ const supabaseService = {
 
           // Attempt 3: Minimal mapping
           const minimal = {
-            user_id: order.userId || null,
+            user_id: dbUserId,
             total: order.total,
             status: order.status || 'Pending',
             items_json: JSON.stringify(order.items),
@@ -784,24 +795,45 @@ export default function App() {
   };
 
   useEffect(() => {
+    let interval: any;
     if (isProfileModalOpen && user?.uid) {
-       supabaseService.getOrdersByUserId(user.uid)
-         .then(orders => {
-            setUser(prev => {
-              if (!prev) return null;
-              return { ...prev, orders };
-            });
-         })
-         .catch(err => console.error('Profile refresh failed:', err));
+       const fetchOrders = () => {
+         supabaseService.getOrdersByUserId(user.uid)
+           .then(orders => {
+              setUser(prev => {
+                if (!prev || prev.uid !== user.uid) return prev;
+                // Only update if there are actual changes or it's the first fetch
+                const hasChanged = JSON.stringify(orders) !== JSON.stringify(prev.orders);
+                if (hasChanged) return { ...prev, orders };
+                return prev;
+              });
+           })
+           .catch(err => console.error('Profile auto-refresh failed:', err));
+       };
+       fetchOrders();
+       interval = setInterval(fetchOrders, 10000); // 10 seconds auto-refresh
     }
+    return () => clearInterval(interval);
   }, [isProfileModalOpen, user?.uid]);
 
   useEffect(() => {
+    let interval: any;
     if (isAdminPanelOpen) {
-      supabaseService.getOrders()
-        .then(orders => setAllOrders(orders))
-        .catch(err => console.error('Admin panel order fetch failed:', err));
+      const fetchOrders = () => {
+        supabaseService.getOrders()
+          .then(orders => {
+            setAllOrders(prev => {
+              const hasChanged = JSON.stringify(orders) !== JSON.stringify(prev);
+              if (hasChanged) return orders;
+              return prev;
+            });
+          })
+          .catch(err => console.error('Admin panel auto-refresh failed:', err));
+      };
+      fetchOrders();
+      interval = setInterval(fetchOrders, 10000); // 10 seconds auto-refresh
     }
+    return () => clearInterval(interval);
   }, [isAdminPanelOpen]);
 
   useEffect(() => {
@@ -2650,16 +2682,23 @@ Your task:
                                 setAuthLoading(true);
                                 const refreshed = await supabaseService.getOrdersByUserId(user.uid);
                                 setUser(prev => prev ? { ...prev, orders: refreshed } : null);
-                                setTimeout(() => alert('Order status synchronized!'), 500);
+                                setTimeout(() => alert('Account data synchronized with Cloud successfully! Auto-refresh is also active every 10 seconds.'), 500);
                               } catch (err) {
                                 console.error('Refresh failed:', err);
+                                alert('Synchronization failed. Please check your internet connection.');
                               } finally {
                                 setAuthLoading(false);
                               }
                             }}
-                            className="flex items-center gap-1 px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-[8px] font-black uppercase tracking-widest text-neutral-500 hover:text-blue-600 transition-colors"
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
+                              authLoading 
+                                ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed' 
+                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20'
+                            }`}
+                            disabled={authLoading}
                           >
-                            <RefreshCw className={`w-2.5 h-2.5 ${authLoading ? 'animate-spin' : ''}`} /> Sync with Cloud
+                            <RefreshCw className={`w-3.5 h-3.5 ${authLoading ? 'animate-spin' : ''}`} /> 
+                            {authLoading ? 'Syncing...' : 'Sync with Cloud'}
                           </button>
                           <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase tracking-widest leading-none">
                             {user.orders?.length || 0} Total Orders
@@ -3669,7 +3708,7 @@ Your task:
                                     setAuthLoading(true);
                                     const refreshedOrders = await supabaseService.getOrders();
                                     setAllOrders(refreshedOrders);
-                                    setTimeout(() => alert('Admin Terminal: All orders synchronized with Cloud DB!'), 500);
+                                    setTimeout(() => alert('Admin Terminal: All orders synchronized with Cloud DB! Auto-refresh is also active every 10 seconds.'), 500);
                                   } catch (err) {
                                     console.error('Refresh failed:', err);
                                     alert('Error: Cloud synchronization failed.');
