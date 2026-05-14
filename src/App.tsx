@@ -187,30 +187,61 @@ const supabaseService = {
   },
   async createOrder(order: Order) {
     try {
+      // Create a copy to manipulate
+      const baseOrder = { ...order };
+      if (!baseOrder.date) baseOrder.date = new Date().toISOString();
+      
       // First try with original object (matches Order interface)
-      const { data, error } = await supabase.from('orders').insert([order]).select();
+      const { data, error } = await supabase.from('orders').insert([baseOrder]).select();
       if (!error && data) return data[0] as Order;
       
-      // Fallback if column naming mismatch (userId vs user_id)
-      if (error && (error.message.includes('column') || error.code === '42703' || error.code === 'PGRST204')) {
-        const mappedOrder = {
-          ...order,
-          user_id: order.userId,
-          customer_details: order.customerDetails,
-          payment_details: order.paymentDetails
-        };
-        // Clean up keys that might not exist in case of strict schema
-        delete (mappedOrder as any).userId;
-        delete (mappedOrder as any).customerDetails;
-        delete (mappedOrder as any).paymentDetails;
-        
-        const { data: data2, error: error2 } = await supabase.from('orders').insert([mappedOrder]).select();
-        if (!error2 && data2) return data2[0] as Order;
-        throw error2 || error;
-      }
-      throw error;
+      console.warn('Initial createOrder failed, trying fallback mapping:', error);
+
+      // Fallback 1: Column naming mismatch (userId vs user_id) and camelCase to snake_case
+      const mappedOrder = {
+        id: order.id,
+        user_id: order.userId,
+        total: order.total,
+        status: order.status,
+        date: baseOrder.date,
+        items: order.items, // Keep as array, Supabase handles JSONB
+        customer_details: order.customerDetails,
+        payment_details: order.paymentDetails
+      };
+
+      const { data: data2, error: error2 } = await supabase.from('orders').insert([mappedOrder]).select();
+      if (!error2 && data2) return data2[0] as Order;
+      
+      console.warn('Fallback 1 failed, trying Fallback 2 (minimal without custom ID):', error2);
+
+      // Fallback 2: Maybe the 'id' is a serial/identity column that shouldn't be set manually
+      const { id: _, ...noIdOrder } = mappedOrder;
+      const { data: data3, error: error3 } = await supabase.from('orders').insert([noIdOrder]).select();
+      if (!error3 && data3) return data3[0] as Order;
+
+      // Fallback 3: Try flattening details if they are not JSONB columns
+      console.warn('Fallback 2 failed, trying Fallback 3 (flattened details):', error3);
+      const flattenedOrder = {
+        ...noIdOrder,
+        customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
+        phone: order.customerDetails?.phone,
+        district: order.customerDetails?.district,
+        thana: order.customerDetails?.thana,
+        address: order.customerDetails?.fullAddress,
+        payment_method: order.paymentDetails?.method,
+        transaction_id: order.paymentDetails?.transactionId,
+        items: JSON.stringify(order.items) // Stringify items as last resort
+      };
+      // Remove complex objects if they failed before
+      delete (flattenedOrder as any).customer_details;
+      delete (flattenedOrder as any).payment_details;
+
+      const { data: data4, error: error4 } = await supabase.from('orders').insert([flattenedOrder]).select();
+      if (!error4 && data4) return data4[0] as Order;
+
+      throw error4 || error3 || error2 || error;
     } catch (err) {
-      console.error('createOrder failure details:', err);
+      console.error('createOrder final failure:', err);
       throw err;
     }
   },
@@ -2014,7 +2045,7 @@ Your task:
                         userId: currentUser.uid,
                         items: [...activeCheckoutItems],
                         total: activeCheckoutTotal,
-                        date: new Date().toLocaleString(),
+                        date: new Date().toISOString(),
                         status: 'Pending',
                         customerDetails: {
                           firstName: firstName || currentUser.displayName?.split(' ')[0] || 'Guest',
