@@ -1009,7 +1009,11 @@ Your task:
                         </div>
                         <button 
                           onClick={async () => {
-                            await supabase.auth.signOut();
+                            try {
+                              await supabase.auth.signOut();
+                            } catch (err) {
+                              console.error('Sign out error:', err);
+                            }
                             setCart([]);
                             localStorage.removeItem('gadgets_ghar_cart');
                             setUser(null);
@@ -1346,7 +1350,7 @@ Your task:
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative w-full max-w-4xl bg-white dark:bg-neutral-900 rounded-[32px] overflow-hidden shadow-2xl flex flex-col md:flex-row h-full md:h-auto max-h-[90vh]"
+              className="relative w-full max-w-4xl bg-white dark:bg-neutral-900 rounded-[32px] overflow-hidden shadow-2xl flex flex-col md:flex-row h-full md:h-auto max-h-[95vh]"
             >
               <button 
                 onClick={() => setSelectedProduct(null)}
@@ -1356,8 +1360,8 @@ Your task:
               </button>
 
               {/* Product Image Area */}
-              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-3 md:p-8 flex-shrink-0">
-                <div className="relative w-full h-[200px] md:h-[350px] lg:h-[400px] mb-2 md:mb-6 flex items-center justify-center">
+              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-4 md:p-8 flex-shrink-0">
+                <div className="relative w-full h-[240px] md:h-[350px] lg:h-[400px] mb-2 md:mb-6 flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={activeImageIndex}
@@ -1374,21 +1378,21 @@ Your task:
                 </div>
 
                 {/* Thumbnail Gallery */}
-                {(selectedProduct.images && selectedProduct.images.some(img => img)) && (
-                  <div className="flex gap-2 w-full px-2 overflow-x-auto py-2 scrollbar-hide justify-start md:justify-center items-center">
+                {(selectedProduct.images && Array.isArray(selectedProduct.images) && selectedProduct.images.some(img => img)) && (
+                  <div className="flex gap-2 w-full px-4 overflow-x-auto py-3 scrollbar-hide justify-start md:justify-center items-center no-scrollbar">
                     <button
                       onClick={() => setActiveImageIndex(0)}
-                      className={`flex-shrink-0 w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === 0 ? 'border-blue-600 scale-105' : 'border-transparent opacity-60'}`}
+                      className={`flex-shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all shadow-sm ${activeImageIndex === 0 ? 'border-blue-600 scale-105 shadow-blue-200' : 'border-transparent opacity-60'}`}
                     >
                       <img src={selectedProduct.image} alt="Thumbnail 1" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </button>
                     {selectedProduct.images.map((img, idx) => {
-                      if (!img) return null;
+                      if (!img || typeof img !== 'string') return null;
                       return (
                         <button
                           key={idx}
                           onClick={() => setActiveImageIndex(idx + 1)}
-                          className={`flex-shrink-0 w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-105' : 'border-transparent opacity-60'}`}
+                          className={`flex-shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all shadow-sm ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-105 shadow-blue-200' : 'border-transparent opacity-60'}`}
                         >
                           <img src={img} alt={`Thumbnail ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </button>
@@ -1407,10 +1411,10 @@ Your task:
                   <h2 className="text-xl md:text-4xl font-black mb-2 md:mb-4 font-display leading-tight text-neutral-900 dark:text-white">
                     {selectedProduct.name}
                   </h2>
-                  <div className="text-2xl md:text-4xl font-black mb-3 md:mb-4 text-neutral-900 dark:text-white flex items-center py-2 h-10 md:h-14">
-                    <span className="text-xl md:text-2xl mr-1 font-black text-emerald-600 self-center">৳</span>
-                    <span className="flex-1">{selectedProduct.price}</span>
-                  </div>
+                <div className="text-2xl md:text-4xl font-black mb-3 md:mb-4 text-neutral-900 dark:text-white flex items-center py-2 h-auto min-h-[40px] md:min-h-[56px]">
+                  <span className="text-xl md:text-2xl mr-1 font-black text-emerald-600 self-center">৳</span>
+                  <span className="flex-1 break-all line-clamp-1">{selectedProduct.price}</span>
+                </div>
                   <div className="w-12 md:w-16 h-1 bg-blue-600 rounded-full mb-4 md:mb-6" />
                   <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed text-sm md:text-lg">
                     {selectedProduct.description}
@@ -2168,14 +2172,18 @@ Your task:
                     <div className="pt-4 mt-4 border-t border-white/20 md:hidden">
                       <button 
                         onClick={async () => {
-                          await supabase.auth.signOut();
+                          try {
+                            await supabase.auth.signOut();
+                          } catch (err) {
+                            console.error('Sign out error:', err);
+                          }
                           setUser(null);
                           setCart([]); // Clear cart on logout
                           localStorage.removeItem('gadgets_ghar_cart'); // Clear cart storage
                           setIsAdminLoggedIn(false);
                           setIsProfileModalOpen(false);
                           setProfileTab(null);
-                          alert('Logged out successfully');
+                          setIsUserMenuOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-5 py-4 rounded-3xl bg-red-500/20 text-white font-bold hover:bg-red-500/30 transition-all"
                       >
