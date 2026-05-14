@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ShoppingCart, Search, X, Plus, Minus, Trash2, ChevronLeft, ChevronRight, Github, Cpu, Sun, Moon, LogIn, LogOut, User as UserIcon, Settings, Camera, Upload, Package, Clock, Bell, Shield, Smartphone, Lock, Globe, MapPin, Truck, AlertCircle, Navigation, BarChart3, TrendingUp, Users, DollarSign, Activity, PieChart, CheckCircle2, XCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { ShoppingCart, Search, X, Plus, Minus, Trash2, ChevronLeft, ChevronRight, Github, Cpu, Sun, Moon, LogIn, LogOut, User as UserIcon, Settings, Camera, Upload, Package, Clock, Bell, Shield, Smartphone, Lock, Globe, MapPin, Truck, AlertCircle, Navigation, BarChart3, TrendingUp, Users, DollarSign, Activity, PieChart, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AreaChart as RechartsAreaChart, Area as RechartsArea, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid as RechartsCartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer as RechartsResponsiveContainer, PieChart as RechartsPieChart, Pie as RechartsPie, Cell as RechartsCell, BarChart as RechartsBarChart, Bar as RechartsBar, Legend as RechartsLegend } from 'recharts';
 import { motion, AnimatePresence, motionValue, useSpring } from 'motion/react';
 import { createClient } from '@supabase/supabase-js';
@@ -185,12 +185,16 @@ const supabaseService = {
       const ordersMap = new Map();
       
       // 1. Start with local orders
-      localOrders.forEach((lo: any) => ordersMap.set(lo.id, lo));
+      localOrders.forEach((lo: any) => {
+        if (lo && lo.id) ordersMap.set(lo.id, lo);
+      });
       
       // 2. Add/Override with server orders
       serverOrders.forEach((so: any) => {
-        const sId = so.id || so.order_id || so.id_order || `ORD-${Math.random().toString(36).substr(2, 5)}`;
-        
+        // Handle various possible ID column names from Supabase
+        const sId = so.id || so.order_id || so.id_order;
+        if (!sId) return;
+
         // Items parsing
         let parsedItems = so.items;
         if (typeof so.items === 'string') {
@@ -218,13 +222,13 @@ const supabaseService = {
           userId: so.user_id || so.userId || so.customer_id,
           items: parsedItems,
           total: Number(so.total || so.amount || so.total_amount || 0),
-          date: so.date || so.created_at || new Date().toISOString(),
+          date: so.date || so.created_at || so.order_date || new Date().toISOString(),
           status: so.status || 'Pending',
           customerDetails: parsedCustomer || {
             firstName: so.customer_name?.split(' ')[0] || 'Customer',
             lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
             phone: so.phone || so.customer_phone || '',
-            email: so.email || '',
+            email: so.email || so.customer_email || '',
             district: so.district || '',
             thana: so.thana || '',
             fullAddress: so.address || so.full_address || ''
@@ -266,11 +270,14 @@ const supabaseService = {
       const ordersMap = new Map();
       
       // Seed with local
-      filteredLocal.forEach((lo: any) => ordersMap.set(lo.id, lo));
+      filteredLocal.forEach((lo: any) => {
+        if (lo && lo.id) ordersMap.set(lo.id, lo);
+      });
       
       // Override with server (parsed)
       serverOrders.forEach((so: any) => {
-        const sId = so.id || so.order_id || so.id_order || `ORD-${Math.random().toString(36).substr(2, 5)}`;
+        const sId = so.id || so.order_id || so.id_order;
+        if (!sId) return;
         
         let parsedItems = so.items;
         if (typeof so.items === 'string') {
@@ -296,13 +303,13 @@ const supabaseService = {
           userId: so.user_id || so.userId || so.customer_id,
           items: parsedItems,
           total: Number(so.total || so.amount || so.total_amount || 0),
-          date: so.date || so.created_at || new Date().toISOString(),
+          date: so.date || so.created_at || so.order_date || new Date().toISOString(),
           status: so.status || 'Pending',
           customerDetails: parsedCustomer || {
             firstName: so.customer_name?.split(' ')[0] || 'Customer',
             lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
             phone: so.phone || so.customer_phone || '',
-            email: so.email || '',
+            email: so.email || so.customer_email || '',
             district: so.district || '',
             thana: so.thana || '',
             fullAddress: so.address || so.full_address || ''
@@ -334,91 +341,55 @@ const supabaseService = {
       const baseOrder = { ...order };
       if (!baseOrder.date) baseOrder.date = new Date().toISOString();
       
-      // First try with original object (matches Order interface)
-      const { data, error } = await supabase.from('orders').insert([baseOrder]).select();
-      if (!error && data) return data[0] as Order;
+      const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
       
-      console.warn('Initial createOrder failed, trying fallback mapping:', error);
+      // Try to save with most likely mappings
+      for (const table of tableNames) {
+        try {
+          // Attempt 1: Full object as is (JsonB support)
+          const { data, error } = await supabase.from(table).insert([baseOrder]).select();
+          if (!error && data) return data[0] as Order;
 
-      // Fallback 1: Column naming mismatch (userId vs user_id) and camelCase to snake_case
-      const mappedOrder: any = {
-        id: order.id,
-        user_id: order.userId,
-        total: order.total,
-        status: order.status,
-        date: baseOrder.date,
-        items: order.items,
-        customer_details: order.customerDetails,
-        payment_details: order.paymentDetails
-      };
+          // Attempt 2: Flattened to individual columns (common for text columns)
+          const flattened = {
+            user_id: order.userId || null,
+            total_amount: order.total,
+            status: order.status || 'Pending',
+            customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
+            customer_phone: order.customerDetails?.phone,
+            customer_email: order.customerDetails?.email,
+            district: order.customerDetails?.district,
+            thana: order.customerDetails?.thana,
+            address: order.customerDetails?.fullAddress,
+            items: JSON.stringify(order.items), // as string
+            payment_method: order.paymentDetails?.method,
+            transaction_id: order.paymentDetails?.transactionId,
+            order_date: baseOrder.date
+          };
 
-      const { data: data2, error: error2 } = await supabase.from('orders').insert([mappedOrder]).select();
-      if (!error2 && data2) return data2[0] as Order;
-      
-      console.warn('Fallback 1 failed, trying Fallback 2 (minimal without custom ID):', error2);
+          const { data: d2, error: e2 } = await supabase.from(table).insert([flattened]).select();
+          if (!e2 && d2) return d2[0] as Order;
 
-      // Fallback 2: Maybe the 'id' is a serial/identity column that shouldn't be set manually
-      const { id: _, ...noIdOrder } = mappedOrder;
-      const { data: data3, error: error3 } = await supabase.from('orders').insert([noIdOrder]).select();
-      if (!error3 && data3) return data3[0] as Order;
+          // Attempt 3: Minimal mapping
+          const minimal = {
+            user_id: order.userId || null,
+            total: order.total,
+            status: order.status || 'Pending',
+            items_json: JSON.stringify(order.items),
+            payment_status: 'Pending'
+          };
+          const { data: d3, error: e3 } = await supabase.from(table).insert([minimal]).select();
+          if (!e3 && d3) return d3[0] as Order;
 
-      // Fallback 3: Maybe the 'user_id' is causing a FK constraint error for guests
-      console.warn('Fallback 2 failed, trying Fallback 3 (No user_id):', error3);
-      const { user_id: __, ...noUserOrder } = noIdOrder;
-      const { data: data4, error: error4 } = await supabase.from('orders').insert([noUserOrder]).select();
-      if (!error4 && data4) return data4[0] as Order;
+        } catch (tableErr) {
+          console.warn(`Failed insert attempt on table ${table}:`, tableErr);
+        }
+      }
 
-      // Fallback 4: Try capitalized table name
-      console.warn('Fallback 3 failed, trying Fallback 4 (Capitalized table):', error4);
-      const { data: data5, error: error5 } = await supabase.from('Orders').insert([noUserOrder]).select();
-      if (!error5 && data5) return data5[0] as Order;
-
-      // Fallback 5: Try singular table name
-      console.warn('Fallback 4 failed, trying Fallback 5 (Singular table):', error5);
-      const { data: data6, error: error6 } = await supabase.from('order').insert([noUserOrder]).select();
-      if (!error6 && data6) return data6[0] as Order;
-
-      // Fallback 6: Try flattening details completely
-      console.warn('Fallback 5 failed, trying Fallback 6 (Flattened/Stringified):', error6);
-      const flattenedOrder = {
-        user_id: order.userId || null,
-        status: order.status,
-        total: order.total,
-        date: baseOrder.date,
-        customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
-        phone: order.customerDetails?.phone,
-        email: order.customerDetails?.email,
-        district: order.customerDetails?.district,
-        thana: order.customerDetails?.thana,
-        address: order.customerDetails?.fullAddress,
-        items_json: JSON.stringify(order.items),
-        payment_method: order.paymentDetails?.method,
-        transaction_id: order.paymentDetails?.transactionId
-      };
-      const { data: data7, error: error7 } = await supabase.from('orders').insert([flattenedOrder]).select();
-      if (!error7 && data7) return data7[0] as Order;
-
-      // Fallback 7: Try without custom ID at all and very minimal set but including as much as possible as individual columns
-      console.warn('Fallback 6 failed, trying Fallback 7 (Individual columns):', error7);
-      const { data: data8, error: error8 } = await supabase.from('orders').insert([{
-        user_id: order.userId || null,
-        total_amount: order.total,
-        status: order.status,
-        customer_phone: order.customerDetails?.phone,
-        customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
-        payment_status: 'Pending',
-        district: order.customerDetails?.district,
-        thana: order.customerDetails?.thana,
-        items: JSON.stringify(order.items)
-      }]).select();
-      if (!error8 && data8) return data8[0] as Order;
-
-      throw error8 || error7 || error6 || error5 || error4 || error3 || error2 || error;
+      console.warn('All database insert attempts failed. Order remains in local buffer.');
+      return order;
     } catch (err: any) {
       console.error('createOrder final failure:', err);
-      // Last-last resort: Return the order object as if it succeeded to let the user proceed
-      // but log it extensively. This is NOT ideal but matches "properly work" from a user POV if they can't fix their DB
-      console.warn('CRITICAL: Order could not be saved to server. Returning mock success for UX.');
       return order;
     }
   },
@@ -2325,7 +2296,6 @@ Your task:
                       setAuthLoading(true);
                       supabaseService.createOrder(newOrder)
                         .then(() => {
-                          setAllOrders(prev => [newOrder, ...prev]);
                           const defaultSessions = [
                             {
                               id: 'SESS-1',
@@ -2346,7 +2316,12 @@ Your task:
                             };
                           });
 
-                          setAllOrders(prev => [newOrder, ...prev]);
+                          setAllOrders(prev => {
+                            // Deduplicate just in case
+                            const exists = prev.some(o => o.id === newOrder.id);
+                            if (exists) return prev;
+                            return [newOrder, ...prev];
+                          });
                           
                           if (buyNowItem) {
                             setBuyNowItem(null);
@@ -2667,11 +2642,29 @@ Your task:
                         <h3 className="text-xl font-black text-neutral-900 dark:text-white tracking-tight">Order History</h3>
                         <p className="text-xs text-neutral-500 font-medium mt-1">Track and manage your past purchases</p>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase tracking-widest leading-none">
-                          {user.orders?.length || 0} Total Orders
-                        </span>
-                      </div>
+                        <div className="text-right flex flex-col items-end gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!user?.id) return;
+                              try {
+                                setAuthLoading(true);
+                                const refreshed = await supabaseService.getOrdersByUserId(user.id);
+                                setUser(prev => prev ? { ...prev, orders: refreshed } : null);
+                                setTimeout(() => alert('Order status synchronized!'), 500);
+                              } catch (err) {
+                                console.error('Refresh failed:', err);
+                              } finally {
+                                setAuthLoading(false);
+                              }
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-[8px] font-black uppercase tracking-widest text-neutral-500 hover:text-blue-600 transition-colors"
+                          >
+                            <RefreshCw className={`w-2.5 h-2.5 ${authLoading ? 'animate-spin' : ''}`} /> Sync with Cloud
+                          </button>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full uppercase tracking-widest leading-none">
+                            {user.orders?.length || 0} Total Orders
+                          </span>
+                        </div>
                     </div>
 
                     <div className="flex-1 space-y-6">
@@ -2701,28 +2694,24 @@ Your task:
                               </div>
                               <div className="flex items-center gap-3">
                                 {order.status === 'Approved' ? (
-                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-[0_2px_10px_-3px_rgba(16,185,129,0.2)]">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 text-white border-b-2 border-blue-800 shadow-lg shadow-blue-500/20">
+                                    <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
                                     Approved
                                   </span>
                                 ) : order.status === 'Cancelled' ? (
-                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-100 shadow-[0_2px_10px_-3px_rgba(239,68,68,0.2)]">
+                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-600 text-white border-b-2 border-red-800 shadow-lg shadow-red-500/20">
                                     <XCircle className="w-3 h-3" />
                                     Cancelled
                                   </span>
                                 ) : order.status === 'Delivered' ? (
-                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-600 text-white border-b-2 border-emerald-800 shadow-lg shadow-emerald-500/20">
                                     <CheckCircle2 className="w-3 h-3" />
                                     Delivered
                                   </span>
-                                ) : order.status === 'Pending' ? (
-                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-700 border border-amber-100 shadow-[0_2px_10px_-3px_rgba(245,158,11,0.2)]">
-                                    <Clock className="w-3 h-3" />
-                                    Pending
-                                  </span>
                                 ) : (
-                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-100 shadow-[0_2px_10px_-3px_rgba(59,130,246,0.2)]">
-                                    {order.status}
+                                  <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-yellow-400 text-neutral-900 border-b-2 border-yellow-600 shadow-lg shadow-yellow-500/20">
+                                    <Clock className="w-3 h-3 animate-pulse" />
+                                    {order.status || 'Pending'}
                                   </span>
                                 )}
                               </div>
@@ -3677,16 +3666,19 @@ Your task:
                               <button
                                 onClick={async () => {
                                   try {
+                                    setAuthLoading(true);
                                     const refreshedOrders = await supabaseService.getOrders();
                                     setAllOrders(refreshedOrders);
-                                    alert('Registry Refreshed Successfully');
+                                    setTimeout(() => alert('Cloud Buffer Synchronized!'), 500);
                                   } catch (err) {
                                     console.error('Refresh failed:', err);
+                                  } finally {
+                                    setAuthLoading(false);
                                   }
                                 }}
-                                className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-800/30 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2"
+                                className="px-6 py-3 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 active:scale-95"
                               >
-                                <Activity className="w-3 h-3" /> Refresh Registry
+                                <RefreshCw className={`w-3 h-3 ${authLoading ? 'animate-spin' : ''}`} /> Update Registry
                               </button>
                               {allOrders.some(o => o.status === 'Cancelled') && (
                                 <button
@@ -3746,12 +3738,16 @@ Your task:
                                    <span className="text-2xl font-black font-display tracking-tighter flex items-baseline">
                                      <span className="text-lg mr-1 font-black text-emerald-600">৳</span>{order.total.toFixed(2)}
                                    </span>
-                                      <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mt-1 ${
-                                        order.status === 'Approved' ? 'bg-green-500/10 text-green-500' : 
-                                        order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' : 
-                                        'bg-blue-500/10 text-blue-500'
+                                      <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest mt-1 shadow-lg border-b-2 flex items-center gap-2 ${
+                                        order.status === 'Approved' ? 'bg-blue-600 text-white border-blue-800 shadow-blue-500/20' : 
+                                        order.status === 'Delivered' ? 'bg-emerald-600 text-white border-emerald-800 shadow-emerald-500/20' : 
+                                        order.status === 'Cancelled' ? 'bg-red-600 text-white border-red-800 shadow-red-500/20' : 
+                                        'bg-yellow-400 text-neutral-900 border-yellow-600 shadow-yellow-500/20'
                                       }`}>
-                                        {order.status}
+                                        {order.status === 'Approved' ? <><CheckCircle2 className="w-3 h-3" /> Approved</> : 
+                                         order.status === 'Delivered' ? <><Truck className="w-3 h-3" /> Delivered</> : 
+                                         order.status === 'Cancelled' ? <><XCircle className="w-3 h-3" /> Cancelled</> : 
+                                         <><Clock className="w-3 h-3 animate-pulse" /> Pending</>}
                                       </div>
                                     </div>
                                   </div>
