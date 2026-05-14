@@ -1150,11 +1150,14 @@ Your task:
 
   // Filter Logic
   const filteredProducts = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = (searchQuery || '').toLowerCase().trim();
     return productsList.filter((product) => {
+      if (!product) return false;
       const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-      const matchesSearch = !q || product.name.toLowerCase().includes(q) || (product.category && product.category.toLowerCase().includes(q));
-      const matchesPreOrder = !showPreOrderOnly || product.isPreOrder;
+      const productName = (product.name || '').toLowerCase();
+      const productCategory = (product.category || '').toLowerCase();
+      const matchesSearch = !q || productName.includes(q) || productCategory.includes(q);
+      const matchesPreOrder = !showPreOrderOnly || !!product.isPreOrder;
       return matchesCategory && matchesSearch && matchesPreOrder;
     });
   }, [selectedCategory, searchQuery, showPreOrderOnly, productsList]);
@@ -1553,78 +1556,104 @@ Your task:
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
-            <AnimatePresence>
-              {filteredProducts.map((product) => (
-                <motion.div
-                  key={product.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
-                  className="group cursor-pointer flex flex-col h-full"
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setActiveImageIndex(0);
-                  }}
-                >
-                  <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
-                    <AnimatePresence>
-                      {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
-                        <motion.div 
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-black py-1 px-2 rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
-                        >
-                          <CheckCircle2 className="w-3 h-3 text-white" /> Visual Match
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                       <span className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">View Details</span>
-                    </div>
-                    <div className="absolute top-4 left-4 flex flex-col gap-2">
-                       {product.isPreOrder && (
-                        <div className="flex flex-col gap-1">
-                          <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
-                            Pre-Order
-                          </span>
-                          {product.preOrderDays && (
-                            <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
-                              Available: {product.preOrderDays}
-                            </span>
-                          )}
-                        </div>
-                       )}
-                    </div>
-                    <div className="absolute top-4 right-4 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-full text-xs font-black shadow-md flex items-center border border-neutral-100 dark:border-neutral-800">
-                      <span className="text-sm mr-1 font-black text-emerald-600">৳</span>{product.price}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-bold mb-1">
-                      {product.category}
-                    </p>
-                    <h3 className="text-lg font-semibold mb-1">{product.name}</h3>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">{product.description}</p>
-                  </div>
-                </motion.div>
+          {isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl mb-4" />
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-1/2" />
+                </div>
               ))}
-            </AnimatePresence>
-          </div>
+            </div>
+          )}
 
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-20">
+          {!isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              <AnimatePresence initial={false}>
+                {filteredProducts.map((product) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.3 }}
+                    className="group cursor-pointer flex flex-col h-full"
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setActiveImageIndex(0);
+                    }}
+                  >
+                    <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
+                      <AnimatePresence>
+                        {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
+                          <motion.div 
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-black py-1 px-2 rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-white" /> Visual Match
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                         <span className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">View Details</span>
+                      </div>
+                      <div className="absolute top-4 left-4 flex flex-col gap-2">
+                         {product.isPreOrder && (
+                          <div className="flex flex-col gap-1">
+                            <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
+                              Pre-Order
+                            </span>
+                            {product.preOrderDays && (
+                              <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
+                                Available: {product.preOrderDays}
+                              </span>
+                            )}
+                          </div>
+                         )}
+                      </div>
+                      <div className="absolute top-4 right-4 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-full text-xs font-black shadow-md flex items-center border border-neutral-100 dark:border-neutral-800">
+                        <span className="text-sm mr-1 font-black text-emerald-600">৳</span>{product.price}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-bold mb-1">
+                        {product.category}
+                      </p>
+                      <h3 className="text-lg font-semibold mb-1">{product.name}</h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">{product.description}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {!isLoading && filteredProducts.length === 0 && (
+            <div className="text-center py-20 bg-white dark:bg-neutral-900/50 rounded-[40px] border border-dashed border-neutral-200 dark:border-neutral-800">
               <Search className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No products found</h3>
-              <p className="text-neutral-500 dark:text-neutral-400">Try adjusting your filters or search query.</p>
+              <h3 className="text-xl font-semibold mb-2">No gadgets matching your criteria</h3>
+              <p className="text-neutral-500 dark:text-neutral-400 max-w-xs mx-auto">
+                We couldn't find any products in <span className="font-bold text-blue-600">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
+              </p>
+              <button 
+                onClick={() => {
+                  setSelectedCategory('All');
+                  setSearchQuery('');
+                  setShowPreOrderOnly(false);
+                }}
+                className="mt-6 text-sm font-bold text-blue-600 hover:underline"
+              >
+                Clear all filters
+              </button>
             </div>
           )}
         </section>
@@ -3468,7 +3497,7 @@ Your task:
                 </div>
               </div>
 
-              <div className="p-10 pt-8 text-center">
+              <div className="p-10 pt-8 text-center overflow-y-auto max-h-[calc(95vh-128px)]">
                 <h2 className="text-3xl font-black font-display tracking-tight text-black dark:text-white uppercase mb-3">
                   Welcome to <br />
                   <span className="text-blue-600 animate-lighting-blue">Gadgets Ghar BD</span>
