@@ -165,9 +165,64 @@ const supabaseService = {
     return true;
   },
   async getOrders() {
-    const { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false });
-    if (error) throw error;
-    return data as Order[];
+    try {
+      // Try both common table names
+      let { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false });
+      
+      if (error) {
+        console.warn('Fetching "orders" failed, trying "Orders":', error);
+        const { data: data2, error: error2 } = await supabase.from('Orders').select('*').order('date', { ascending: false });
+        if (!error2 && data2) {
+          data = data2;
+          error = null;
+        }
+      }
+      
+      const serverOrders = (data || []) as Order[];
+      const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
+      
+      // Merge and deduplicate
+      const combined = [...localOrders];
+      serverOrders.forEach((so: any) => {
+        // Handle potential ID field differences
+        const sId = so.id || so.order_id || so.id_order || `ORD-${Math.random().toString(36).substr(2, 5)}`;
+        if (!combined.find(lo => lo.id === sId)) {
+          // Parse items if it's a string (Postgres might return it as string if not JSONB)
+          let parsedItems = so.items;
+          if (typeof so.items === 'string') {
+            try { parsedItems = JSON.parse(so.items); } catch(e) { parsedItems = []; }
+          } else if (so.items_json) {
+            try { parsedItems = JSON.parse(so.items_json); } catch(e) { parsedItems = []; }
+          }
+          
+          if (!Array.isArray(parsedItems)) parsedItems = [];
+
+          combined.push({
+            ...so,
+            id: sId,
+            userId: so.user_id || so.userId || so.customer_id,
+            items: parsedItems,
+            total: Number(so.total || so.amount || so.total_amount || 0),
+            date: so.date || so.created_at || new Date().toISOString(),
+            status: so.status || 'Pending',
+            customerDetails: so.customer_details || so.customerDetails || {
+              firstName: so.customer_name?.split(' ')[0] || 'Customer',
+              lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
+              phone: so.phone || so.customer_phone || ''
+            },
+            paymentDetails: so.payment_details || so.paymentDetails || {
+              method: (so.payment_method || 'bkash').toLowerCase(),
+              transactionId: so.transaction_id || so.trx_id || ''
+            }
+          });
+        }
+      });
+      
+      return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) as Order[];
+    } catch (err) {
+      console.error('getOrders failure:', err);
+      return JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]') as Order[];
+    }
   },
   async getOrdersByUserId(userId: string) {
     try {
@@ -3490,6 +3545,34 @@ Your task:
                                 <div key={order.id} className="p-6 bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-[32px] hover:shadow-xl transition-all">
                                   <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
                                     <div className="flex gap-4">
+                               <button
+                                 onClick={async () => {
+                                   try {
+                                     const refreshedOrders = await supabaseService.getOrders();
+                                     setAllOrders(refreshedOrders);
+                                     alert('Registry Refreshed Successfully');
+                                   } catch (err) {
+                                     console.error('Refresh failed:', err);
+                                   }
+                                 }}
+                                 className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-800/30 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2"
+                               >
+                                 <Activity className="w-3 h-3" /> Refresh Registry
+                               </button>
+                               <button
+                                 onClick={async () => {
+                                   try {
+                                     const refreshedOrders = await supabaseService.getOrders();
+                                     setAllOrders(refreshedOrders);
+                                     alert('Registry Refreshed Successfully');
+                                   } catch (err) {
+                                     console.error('Refresh failed:', err);
+                                   }
+                                 }}
+                                 className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-800/30 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2"
+                               >
+                                 <Activity className="w-3 h-3" /> Refresh Registry
+                               </button>
                                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
                                         order.status === 'Approved' ? 'bg-green-100 text-green-600' : 
                                         order.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 
