@@ -784,8 +784,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isProfileModalOpen && user?.id) {
-       supabaseService.getOrdersByUserId(user.id)
+    if (isProfileModalOpen && user?.uid) {
+       supabaseService.getOrdersByUserId(user.uid)
          .then(orders => {
             setUser(prev => {
               if (!prev) return null;
@@ -794,7 +794,7 @@ export default function App() {
          })
          .catch(err => console.error('Profile refresh failed:', err));
     }
-  }, [isProfileModalOpen, user?.id]);
+  }, [isProfileModalOpen, user?.uid]);
 
   useEffect(() => {
     if (isAdminPanelOpen) {
@@ -2645,10 +2645,10 @@ Your task:
                         <div className="text-right flex flex-col items-end gap-2">
                           <button
                             onClick={async () => {
-                              if (!user?.id) return;
+                              if (!user?.uid) return;
                               try {
                                 setAuthLoading(true);
-                                const refreshed = await supabaseService.getOrdersByUserId(user.id);
+                                const refreshed = await supabaseService.getOrdersByUserId(user.uid);
                                 setUser(prev => prev ? { ...prev, orders: refreshed } : null);
                                 setTimeout(() => alert('Order status synchronized!'), 500);
                               } catch (err) {
@@ -3669,16 +3669,18 @@ Your task:
                                     setAuthLoading(true);
                                     const refreshedOrders = await supabaseService.getOrders();
                                     setAllOrders(refreshedOrders);
-                                    setTimeout(() => alert('Cloud Buffer Synchronized!'), 500);
+                                    setTimeout(() => alert('Admin Terminal: All orders synchronized with Cloud DB!'), 500);
                                   } catch (err) {
                                     console.error('Refresh failed:', err);
+                                    alert('Error: Cloud synchronization failed.');
                                   } finally {
                                     setAuthLoading(false);
                                   }
                                 }}
-                                className="px-6 py-3 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 active:scale-95"
+                                className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl shadow-xl shadow-neutral-900/20 text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border border-neutral-800 dark:border-neutral-200"
                               >
-                                <RefreshCw className={`w-3 h-3 ${authLoading ? 'animate-spin' : ''}`} /> Update Registry
+                                <RefreshCw className={`w-3.5 h-3.5 ${authLoading ? 'animate-spin' : ''}`} /> 
+                                {authLoading ? 'Syncing...' : 'Sync with Server'}
                               </button>
                               {allOrders.some(o => o.status === 'Cancelled') && (
                                 <button
@@ -3807,7 +3809,7 @@ Your task:
                                                 await supabaseService.updateOrderStatus(order.id, 'Approved');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Approved' } : o));
                                                 // Sync user state if admin is also the customer
-                                                if (user?.id === order.userId) {
+                                                if (user?.uid === order.userId) {
                                                   setUser(prev => prev ? {
                                                     ...prev,
                                                     orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Approved' } : o)
@@ -3828,7 +3830,7 @@ Your task:
                                                 await supabaseService.updateOrderStatus(order.id, 'Cancelled');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o));
                                                 // Sync user state if admin is also the customer
-                                                if (user?.id === order.userId) {
+                                                if (user?.uid === order.userId) {
                                                   setUser(prev => prev ? {
                                                     ...prev,
                                                     orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o)
@@ -3853,7 +3855,7 @@ Your task:
                                               await supabaseService.updateOrderStatus(order.id, 'Delivered');
                                               setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o));
                                               // Sync user state if admin is also the customer
-                                              if (user?.id === order.userId) {
+                                              if (user?.uid === order.userId) {
                                                 setUser(prev => prev ? {
                                                   ...prev,
                                                   orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o)
@@ -3878,7 +3880,7 @@ Your task:
                                                 await supabaseService.updateOrderStatus(order.id, 'Pending');
                                                 setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Pending' } : o));
                                                 // Sync user state
-                                                if (user?.id === order.userId) {
+                                                if (user?.uid === order.userId) {
                                                   setUser(prev => prev ? {
                                                     ...prev,
                                                     orders: prev.orders.map(o => o.id === order.id ? { ...o, status: 'Pending' } : o)
