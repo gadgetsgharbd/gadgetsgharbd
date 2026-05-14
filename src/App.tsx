@@ -1557,7 +1557,7 @@ Your task:
           </div>
 
           {isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="animate-pulse">
                   <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl mb-4" />
@@ -1569,8 +1569,8 @@ Your task:
           )}
 
           {!isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              <AnimatePresence initial={false}>
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+              <AnimatePresence>
                 {filteredProducts.map((product) => (
                   <motion.div
                     key={product.id}
