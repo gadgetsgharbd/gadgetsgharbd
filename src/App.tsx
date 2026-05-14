@@ -1115,7 +1115,7 @@ Your task:
               />
               <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/40 to-transparent" />
               
-              <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center md:justify-start gap-12 pt-12 md:pt-0">
+              <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-center md:justify-start gap-8 md:gap-12 pt-20 pb-20 md:pt-0 md:pb-0">
                 <motion.div
                   initial={{ opacity: 0, x: -50 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -1207,7 +1207,7 @@ Your task:
           </AnimatePresence>
 
           {/* Slider Indicators */}
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex gap-3 z-30">
+          <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 flex gap-3 z-30">
             {allSlides.map((_, i) => (
               <button
                 key={i}
