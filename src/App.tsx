@@ -709,8 +709,8 @@ export default function App() {
           supabaseService.getSettings().catch(() => null)
         ]);
         
-        if (products && products.length > 0) {
-          const mappedProducts = products.map((p: any) => ({
+        if (products) {
+          const mappedProducts = (products as any[]).map((p: any) => ({
             ...p,
             hasWarranty: p.has_warranty ?? p.hasWarranty,
             warrantyDetails: p.warranty_details ?? p.warrantyDetails,
@@ -719,6 +719,8 @@ export default function App() {
             preOrderDays: p.pre_order_days ?? p.preOrderDays
           }));
           setProductsList(mappedProducts);
+        } else {
+          setProductsList([]);
         }
         if (orders) setAllOrders(orders);
         if (settings) {
@@ -1148,9 +1150,10 @@ Your task:
 
   // Filter Logic
   const filteredProducts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
     return productsList.filter((product) => {
       const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !q || product.name.toLowerCase().includes(q) || (product.category && product.category.toLowerCase().includes(q));
       const matchesPreOrder = !showPreOrderOnly || product.isPreOrder;
       return matchesCategory && matchesSearch && matchesPreOrder;
     });
@@ -1550,23 +1553,22 @@ Your task:
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            <AnimatePresence mode="popLayout">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
+            <AnimatePresence>
               {filteredProducts.map((product) => (
                 <motion.div
                   key={product.id}
-                  layout
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.3 }}
-                  className="group cursor-pointer"
+                  className="group cursor-pointer flex flex-col h-full"
                   onClick={() => {
                     setSelectedProduct(product);
                     setActiveImageIndex(0);
                   }}
                 >
-                  <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-4">
+                  <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
                     <AnimatePresence>
                       {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
                         <motion.div 
