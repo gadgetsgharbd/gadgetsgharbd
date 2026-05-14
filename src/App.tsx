@@ -181,43 +181,64 @@ const supabaseService = {
       const serverOrders = (data || []) as Order[];
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
       
-      // Merge and deduplicate
-      const combined = [...localOrders];
+      // Merge logic: use a Map keyed by ID to deduplicate and handle updates
+      const ordersMap = new Map();
+      
+      // 1. Start with local orders
+      localOrders.forEach((lo: any) => ordersMap.set(lo.id, lo));
+      
+      // 2. Add/Override with server orders
       serverOrders.forEach((so: any) => {
-        // Handle potential ID field differences
         const sId = so.id || so.order_id || so.id_order || `ORD-${Math.random().toString(36).substr(2, 5)}`;
-        if (!combined.find(lo => lo.id === sId)) {
-          // Parse items if it's a string (Postgres might return it as string if not JSONB)
-          let parsedItems = so.items;
-          if (typeof so.items === 'string') {
-            try { parsedItems = JSON.parse(so.items); } catch(e) { parsedItems = []; }
-          } else if (so.items_json) {
-            try { parsedItems = JSON.parse(so.items_json); } catch(e) { parsedItems = []; }
-          }
-          
-          if (!Array.isArray(parsedItems)) parsedItems = [];
-
-          combined.push({
-            ...so,
-            id: sId,
-            userId: so.user_id || so.userId || so.customer_id,
-            items: parsedItems,
-            total: Number(so.total || so.amount || so.total_amount || 0),
-            date: so.date || so.created_at || new Date().toISOString(),
-            status: so.status || 'Pending',
-            customerDetails: so.customer_details || so.customerDetails || {
-              firstName: so.customer_name?.split(' ')[0] || 'Customer',
-              lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
-              phone: so.phone || so.customer_phone || ''
-            },
-            paymentDetails: so.payment_details || so.paymentDetails || {
-              method: (so.payment_method || 'bkash').toLowerCase(),
-              transactionId: so.transaction_id || so.trx_id || ''
-            }
-          });
+        
+        // Items parsing
+        let parsedItems = so.items;
+        if (typeof so.items === 'string') {
+          try { parsedItems = JSON.parse(so.items); } catch(e) { parsedItems = []; }
+        } else if (so.items_json) {
+          try { parsedItems = JSON.parse(so.items_json); } catch(e) { parsedItems = []; }
         }
+        if (!Array.isArray(parsedItems)) parsedItems = [];
+
+        // Customer details parsing
+        let parsedCustomer = so.customer_details || so.customerDetails;
+        if (typeof parsedCustomer === 'string') {
+          try { parsedCustomer = JSON.parse(parsedCustomer); } catch(e) {}
+        }
+        
+        // Payment details parsing
+        let parsedPayment = so.payment_details || so.paymentDetails;
+        if (typeof parsedPayment === 'string') {
+          try { parsedPayment = JSON.parse(parsedPayment); } catch(e) {}
+        }
+
+        const reconstructed: Order = {
+          ...so,
+          id: sId,
+          userId: so.user_id || so.userId || so.customer_id,
+          items: parsedItems,
+          total: Number(so.total || so.amount || so.total_amount || 0),
+          date: so.date || so.created_at || new Date().toISOString(),
+          status: so.status || 'Pending',
+          customerDetails: parsedCustomer || {
+            firstName: so.customer_name?.split(' ')[0] || 'Customer',
+            lastName: so.customer_name?.split(' ').slice(1).join(' ') || '',
+            phone: so.phone || so.customer_phone || '',
+            email: so.email || '',
+            district: so.district || '',
+            thana: so.thana || '',
+            fullAddress: so.address || so.full_address || ''
+          },
+          paymentDetails: parsedPayment || {
+            method: (so.payment_method || 'bkash').toLowerCase() as any,
+            transactionId: so.transaction_id || so.trx_id || ''
+          }
+        };
+        
+        ordersMap.set(sId, reconstructed);
       });
       
+      const combined = Array.from(ordersMap.values());
       return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) as Order[];
     } catch (err) {
       console.error('getOrders failure:', err);
@@ -317,6 +338,10 @@ const supabaseService = {
         date: baseOrder.date,
         customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
         phone: order.customerDetails?.phone,
+        email: order.customerDetails?.email,
+        district: order.customerDetails?.district,
+        thana: order.customerDetails?.thana,
+        address: order.customerDetails?.fullAddress,
         items_json: JSON.stringify(order.items),
         payment_method: order.paymentDetails?.method,
         transaction_id: order.paymentDetails?.transactionId
@@ -324,16 +349,19 @@ const supabaseService = {
       const { data: data7, error: error7 } = await supabase.from('orders').insert([flattenedOrder]).select();
       if (!error7 && data7) return data7[0] as Order;
 
-      // Fallback 7: Try without custom ID at all and very minimal set
-      console.warn('Fallback 6 failed, trying Fallback 7 (Minimalist):', error7);
-      const minimalOrder = {
+      // Fallback 7: Try without custom ID at all and very minimal set but including as much as possible as individual columns
+      console.warn('Fallback 6 failed, trying Fallback 7 (Individual columns):', error7);
+      const { data: data8, error: error8 } = await supabase.from('orders').insert([{
         user_id: order.userId || null,
         total_amount: order.total,
         status: order.status,
         customer_phone: order.customerDetails?.phone,
-        payment_status: 'Pending'
-      };
-      const { data: data8, error: error8 } = await supabase.from('orders').insert([minimalOrder]).select();
+        customer_name: `${order.customerDetails?.firstName} ${order.customerDetails?.lastName}`,
+        payment_status: 'Pending',
+        district: order.customerDetails?.district,
+        thana: order.customerDetails?.thana,
+        items: JSON.stringify(order.items)
+      }]).select();
       if (!error8 && data8) return data8[0] as Order;
 
       throw error8 || error7 || error6 || error5 || error4 || error3 || error2 || error;
@@ -2235,6 +2263,7 @@ Your task:
                       setAuthLoading(true);
                       supabaseService.createOrder(newOrder)
                         .then(() => {
+                          setAllOrders(prev => [newOrder, ...prev]);
                           const defaultSessions = [
                             {
                               id: 'SESS-1',
