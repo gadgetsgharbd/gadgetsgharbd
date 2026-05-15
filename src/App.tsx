@@ -113,18 +113,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storage: window.localStorage,
-    storageKey: 'gadgets_ghar_auth'
+    storage: window.localStorage
   }
 });
-
-const clearSupabaseAuth = () => {
-  Object.keys(localStorage).forEach(key => {
-    if (key.startsWith('gadgets_ghar_auth') || key.startsWith('sb-')) {
-      localStorage.removeItem(key);
-    }
-  });
-};
 
 const supabaseService = {
   async getProducts() {
@@ -637,39 +628,6 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
-
-  // Welcome voice greeting
-  useEffect(() => {
-    if (isLoading) return;
-    const speakWelcome = () => {
-      if (!('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel();
-      const firstName = user?.displayName?.split(' ')[0] || '';
-      const message = firstName
-        ? `Welcome back, ${firstName}! Great to see you at Gadgets Ghar BD.`
-        : `Welcome to Gadgets Ghar BD!`;
-      const utterance = new SpeechSynthesisUtterance(message);
-      const setVoiceAndSpeak = () => {
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find(v =>
-          v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Samantha'))
-        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-        if (preferred) utterance.voice = preferred;
-        utterance.lang = 'en-US';
-        utterance.rate = 0.92;
-        utterance.pitch = 1.05;
-        utterance.volume = 1;
-        window.speechSynthesis.speak(utterance);
-      };
-      if (window.speechSynthesis.getVoices().length > 0) {
-        setVoiceAndSpeak();
-      } else {
-        window.speechSynthesis.onvoiceschanged = setVoiceAndSpeak;
-      }
-    };
-    const voiceTimer = setTimeout(speakWelcome, 1200);
-    return () => { clearTimeout(voiceTimer); window.speechSynthesis?.cancel(); };
-  }, [isLoading, user]);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [userEmail, setUserEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -782,56 +740,57 @@ export default function App() {
 
   // Load Initial Global Data
   useEffect(() => {
-    let cancelled = false;
-
-    const mapProduct = (p: any) => ({
-      ...p,
-      hasWarranty: p.has_warranty ?? p.hasWarranty,
-      warrantyDetails: p.warranty_details ?? p.warrantyDetails,
-      warrantyTime: p.warranty_time ?? p.warrantyTime,
-      warrantyConditions: p.warranty_conditions ?? p.warrantyConditions,
-      isPreOrder: p.is_pre_order ?? p.isPreOrder,
-      preOrderDays: p.pre_order_days ?? p.preOrderDays
-    });
-
     const fetchData = async () => {
-      setIsLoading(true);
-
-      // Hard fallback - always stop loading after 4s
-      const safetyTimeout = setTimeout(() => {
-        if (!cancelled) setIsLoading(false);
-      }, 4000);
-
-      // Products fetch FIRST - most critical, show immediately
       try {
-        const products = await supabaseService.getProducts();
-        if (!cancelled && products && products.length > 0) {
-          setProductsList(products.map(mapProduct));
-        }
-      } catch (err) {
-        console.error('Products fetch failed:', err);
-      } finally {
-        clearTimeout(safetyTimeout);
-        if (!cancelled) setIsLoading(false);
-      }
-
-      // Orders + Settings in background (non-blocking)
-      try {
-        const [orders, settings] = await Promise.all([
-          supabaseService.getOrders().catch(() => null),
-          supabaseService.getSettings().catch(() => null)
+        setIsLoading(true);
+        // Safety timeout increased to 10s for slow connections
+        const safetyTimeout = setTimeout(() => setIsLoading(false), 10000);
+        
+        const [products, orders, settings] = await Promise.all([
+          supabaseService.getProducts().catch((err) => {
+            console.error('Products fetch error:', err);
+            return [];
+          }),
+          supabaseService.getOrders().catch((err) => {
+            console.error('Orders fetch error:', err);
+            return [];
+          }),
+          supabaseService.getSettings().catch((err) => {
+            console.error('Settings fetch error:', err);
+            return null;
+          })
         ]);
-        if (!cancelled) {
-          if (orders) setAllOrders(orders);
-          if (settings) setSiteSettings(prev => ({ ...prev, ...settings }));
+        
+        clearTimeout(safetyTimeout);
+        
+        if (products && products.length > 0) {
+          const mappedProducts = (products as any[]).map((p: any) => ({
+            ...p,
+            hasWarranty: p.has_warranty ?? p.hasWarranty,
+            warrantyDetails: p.warranty_details ?? p.warrantyDetails,
+            warrantyTime: p.warranty_time ?? p.warrantyTime,
+            warrantyConditions: p.warranty_conditions ?? p.warrantyConditions,
+            isPreOrder: p.is_pre_order ?? p.isPreOrder,
+            preOrderDays: p.pre_order_days ?? p.preOrderDays
+          }));
+          setProductsList(mappedProducts);
+        } else {
+          // If server returns empty, we keep the empty array but log it
+          console.log('No products found on server.');
+          setProductsList([]);
         }
-      } catch (err) {
-        console.error('Background fetch failed:', err);
+        if (orders) setAllOrders(orders);
+        if (settings) {
+            setSiteSettings(prev => ({ ...prev, ...settings }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial data:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     fetchData();
-    return () => { cancelled = true; };
   }, []);
 
   // Admin Product Form State
@@ -1407,7 +1366,7 @@ Your task:
                         <button 
                           onClick={async () => {
                             try {
-                              await supabase.auth.signOut(); clearSupabaseAuth();
+                              await supabase.auth.signOut();
                             } catch (err) {
                               console.error('Sign out error:', err);
                             }
@@ -1662,7 +1621,7 @@ Your task:
           </div>
 
           <div className="min-h-[400px] w-full">
-            {isLoading && productsList.length === 0 ? (
+            {isLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                   <div key={i} className="animate-pulse bg-white dark:bg-neutral-900 p-2 rounded-3xl border border-neutral-100 dark:border-neutral-800">
@@ -2632,7 +2591,7 @@ Your task:
                       <button 
                         onClick={async () => {
                           try {
-                            await supabase.auth.signOut(); clearSupabaseAuth();
+                            await supabase.auth.signOut();
                           } catch (err) {
                             console.error('Sign out error:', err);
                           }
@@ -3448,7 +3407,7 @@ Your task:
                   <button
                     onClick={async () => {
                       alert('Password changed successfully! Please log in again.');
-                      await supabase.auth.signOut(); clearSupabaseAuth();
+                      await supabase.auth.signOut();
                       setCart([]);
                       localStorage.removeItem('gadgets_ghar_cart');
                       setUser(null);
@@ -3776,7 +3735,7 @@ Your task:
                     <div className="flex items-center gap-3">
                       <button 
                          onClick={async () => {
-                           await supabase.auth.signOut(); clearSupabaseAuth();
+                           await supabase.auth.signOut();
                            setCart([]);
                            localStorage.removeItem('gadgets_ghar_cart');
                            setIsAdminLoggedIn(false);
