@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ShoppingCart, Search, X, Plus, Minus, Trash2, ChevronLeft, ChevronRight, Github, Cpu, Sun, Moon, LogIn, LogOut, User as UserIcon, Settings, Camera, Upload, Package, Clock, Bell, Shield, Smartphone, Lock, Globe, MapPin, Truck, AlertCircle, Navigation, BarChart3, TrendingUp, Users, DollarSign, Activity, PieChart, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { ShoppingCart, Search, X, Plus, Minus, Trash2, ChevronLeft, ChevronRight, Github, Cpu, Sun, Moon, LogIn, LogOut, User as UserIcon, Settings, Camera, Upload, Package, Clock, Bell, Shield, Smartphone, Lock, Globe, MapPin, Truck, AlertCircle, Navigation, BarChart3, TrendingUp, Users, DollarSign, Activity, PieChart, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, Loader2, PackageSearch } from 'lucide-react';
 import { AreaChart as RechartsAreaChart, Area as RechartsArea, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid as RechartsCartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer as RechartsResponsiveContainer, PieChart as RechartsPieChart, Pie as RechartsPie, Cell as RechartsCell, BarChart as RechartsBarChart, Bar as RechartsBar, Legend as RechartsLegend } from 'recharts';
 import { motion, AnimatePresence, motionValue, useSpring } from 'motion/react';
 import { createClient } from '@supabase/supabase-js';
@@ -111,21 +111,11 @@ if (!supabaseUrl.startsWith('http')) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
-    autoRefreshToken: false,
+    autoRefreshToken: true,
     detectSessionInUrl: true,
     storage: window.localStorage
   }
 });
-
-// Helper: fully wipe Supabase session from localStorage so refresh can't restore it
-const clearSupabaseSession = () => {
-  // Remove all keys Supabase uses for token storage
-  Object.keys(localStorage).forEach(key => {
-    if (key.startsWith('sb-') || key.includes('supabase')) {
-      localStorage.removeItem(key);
-    }
-  });
-};
 
 const supabaseService = {
   async getProducts() {
@@ -747,7 +737,7 @@ export default function App() {
       try {
         setIsLoading(true);
         // Safety timeout to ensure loading state doesn't get stuck
-        const safetyTimeout = setTimeout(() => setIsLoading(false), 10000);
+        const safetyTimeout = setTimeout(() => setIsLoading(false), 5000);
         
         const [products, orders, settings] = await Promise.all([
           supabaseService.getProducts().catch(() => []),
@@ -1362,7 +1352,6 @@ Your task:
                             } catch (err) {
                               console.error('Sign out error:', err);
                             }
-                            clearSupabaseSession();
                             setCart([]);
                             localStorage.removeItem('gadgets_ghar_cart');
                             setUser(null);
@@ -1571,138 +1560,151 @@ Your task:
 
         {/* Product Section */}
         <section id="products" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight mb-2">Featured Products</h2>
-              <p className="text-neutral-500 dark:text-neutral-400 text-sm">Showing {filteredProducts.length} items</p>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6 w-full overflow-hidden">
+            <div className="w-full md:w-auto">
+              <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">Featured Products</h2>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-neutral-500 dark:text-neutral-400 text-[10px] font-black uppercase tracking-widest">
+                  Showing {filteredProducts.length} items in {selectedCategory}
+                </p>
+              </div>
             </div>
 
-            {/* Category Filter */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setShowPreOrderOnly(!showPreOrderOnly)}
-                className={`px-4 py-2 rounded-full text-sm font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                  showPreOrderOnly
-                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none'
-                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-200 dark:border-amber-800'
-                }`}
-              >
-                <Clock className="w-4 h-4" /> Pre-Order
-              </button>
-              <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800 mx-2 hidden md:block" />
-              {dynamicCategories.map((cat) => (
+            {/* Category Filter - Optimized for Mobile Scroll */}
+            <div className="w-full md:w-auto overflow-hidden">
+              <div className="flex overflow-x-auto pb-4 gap-2 no-scrollbar scroll-smooth -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide touch-pan-x">
                 <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    selectedCategory === cat
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900'
-                      : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700'
+                  onClick={() => setShowPreOrderOnly(!showPreOrderOnly)}
+                  className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border-2 ${
+                    showPreOrderOnly
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xl shadow-amber-200 dark:shadow-none'
+                      : 'bg-white dark:bg-neutral-900 text-amber-600 border-amber-100 dark:border-neutral-800 hover:bg-amber-50'
                   }`}
                 >
-                  {cat}
+                  <Clock className="w-3.5 h-3.5" /> Pre-Order
                 </button>
-              ))}
+                <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800 self-center hidden md:block" />
+                {dynamicCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
+                      selectedCategory === cat
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-200 dark:shadow-blue-900 transform scale-105 z-10'
+                        : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {isLoading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-8">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl mb-4" />
-                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-3/4 mb-2" />
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-1/2" />
+                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-3xl mb-4" />
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-3/4 mb-2" />
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-1/2" />
                 </div>
               ))}
             </div>
           )}
 
           {!isLoading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-8">
-              {filteredProducts.map((product) => (
-                <motion.div
-                  key={product.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
-                  className="group cursor-pointer flex flex-col h-full"
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setActiveImageIndex(0);
-                  }}
-                >
-                    <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
-                      <AnimatePresence>
-                        {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
-                          <motion.div 
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-black py-1 px-2 rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
-                          >
-                            <CheckCircle2 className="w-3 h-3 text-white" /> Visual Match
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                         <span className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">View Details</span>
-                      </div>
-                      <div className="absolute top-2 left-2 flex flex-col gap-2">
-                         {product.isPreOrder && (
-                          <div className="flex flex-col gap-1">
-                            <span className="bg-amber-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg self-start">
-                              Pre-Order
-                            </span>
-                            {product.preOrderDays && (
-                              <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
-                                Available: {product.preOrderDays}
-                              </span>
+            <div className="min-h-[400px] w-full mt-8">
+              {filteredProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-[40px] text-center px-6">
+                  <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-6">
+                    <Search className="w-10 h-10 text-neutral-300 dark:text-neutral-600" />
+                  </div>
+                  <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">No products found</h3>
+                  <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto text-sm leading-relaxed">
+                    We couldn't find any items in <span className="text-blue-600 font-bold">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
+                  </p>
+                  <button 
+                    onClick={() => {
+                      setSelectedCategory('All');
+                      setShowPreOrderOnly(false);
+                      setSearchQuery('');
+                    }}
+                    className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 dark:shadow-none"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+                  <AnimatePresence>
+                    {filteredProducts.map((product) => (
+                      <motion.div
+                        key={product.id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.4, ease: "easeOut" }}
+                        className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden hover:shadow-2xl transition-all p-2"
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setActiveImageIndex(0);
+                        }}
+                      >
+                        <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
+                          <AnimatePresence>
+                            {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
+                              <motion.div 
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-black py-1 px-2 rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
+                              >
+                                <CheckCircle2 className="w-3 h-3 text-white" /> Visual Match
+                              </motion.div>
                             )}
+                          </AnimatePresence>
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                             <span className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">View Details</span>
                           </div>
-                         )}
-                      </div>
-                      <div className="absolute top-2 right-2 bg-white dark:bg-neutral-900 px-2 py-1 rounded-full text-[10px] font-black shadow-md flex items-center border border-neutral-100 dark:border-neutral-800">
-                        <span className="text-xs mr-0.5 font-black text-emerald-600">৳</span>{product.price}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[9px] sm:text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-bold mb-0.5 sm:mb-1">
-                        {product.category}
-                      </p>
-                      <h3 className="text-sm sm:text-lg font-semibold mb-0.5 sm:mb-1 line-clamp-2">{product.name}</h3>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 hidden sm:block">{product.description}</p>
-                    </div>
-                  </motion.div>
-                ))}
-            </div>
-          )}
-
-          {!isLoading && filteredProducts.length === 0 && (
-            <div className="text-center py-20 bg-white dark:bg-neutral-900/50 rounded-[40px] border border-dashed border-neutral-200 dark:border-neutral-800">
-              <Search className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No gadgets matching your criteria</h3>
-              <p className="text-neutral-500 dark:text-neutral-400 max-w-xs mx-auto">
-                We couldn't find any products in <span className="font-bold text-blue-600">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
-              </p>
-              <button 
-                onClick={() => {
-                  setSelectedCategory('All');
-                  setSearchQuery('');
-                  setShowPreOrderOnly(false);
-                }}
-                className="mt-6 text-sm font-bold text-blue-600 hover:underline"
-              >
-                Clear all filters
-              </button>
+                          <div className="absolute top-4 left-4 flex flex-col gap-2">
+                             {product.isPreOrder && (
+                              <div className="flex flex-col gap-1">
+                                <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
+                                  Pre-Order
+                                </span>
+                                {product.preOrderDays && (
+                                  <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
+                                    Available: {product.preOrderDays}
+                                  </span>
+                                )}
+                              </div>
+                             )}
+                          </div>
+                          <div className="absolute top-4 right-4 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-full text-xs font-black shadow-md flex items-center border border-neutral-100 dark:border-neutral-800">
+                            <span className="text-sm mr-1 font-black text-emerald-600">৳</span>{product.price}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-bold mb-1">
+                            {product.category}
+                          </p>
+                          <h3 className="text-lg font-semibold mb-1">{product.name}</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">{product.description}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -2586,7 +2588,6 @@ Your task:
                           } catch (err) {
                             console.error('Sign out error:', err);
                           }
-                          clearSupabaseSession();
                           setUser(null);
                           setCart([]); // Clear cart on logout
                           localStorage.removeItem('gadgets_ghar_cart'); // Clear cart storage
@@ -3400,7 +3401,6 @@ Your task:
                     onClick={async () => {
                       alert('Password changed successfully! Please log in again.');
                       await supabase.auth.signOut();
-                      clearSupabaseSession();
                       setCart([]);
                       localStorage.removeItem('gadgets_ghar_cart');
                       setUser(null);
@@ -3729,7 +3729,6 @@ Your task:
                       <button 
                          onClick={async () => {
                            await supabase.auth.signOut();
-                           clearSupabaseSession();
                            setCart([]);
                            localStorage.removeItem('gadgets_ghar_cart');
                            setIsAdminLoggedIn(false);
