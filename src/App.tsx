@@ -1615,15 +1615,15 @@ Your task:
           )}
 
           {!isLoading && (
-            <div className="min-h-[400px] w-full mt-8">
+            <div className="min-h-[400px] w-full mt-4 md:mt-8">
               {filteredProducts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-[40px] text-center px-6">
-                  <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-6">
-                    <Search className="w-10 h-10 text-neutral-300 dark:text-neutral-600" />
+                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-neutral-900 border-2 border-dashed border-neutral-100 dark:border-neutral-800 rounded-[40px] text-center px-6 mx-auto max-w-2xl shadow-sm">
+                  <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800/50 rounded-full flex items-center justify-center mb-6">
+                    <Search className="w-10 h-10 text-neutral-300 dark:text-neutral-700" />
                   </div>
-                  <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">No products found</h3>
-                  <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto text-sm leading-relaxed">
-                    We couldn't find any items in <span className="text-blue-600 font-bold">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
+                  <h3 className="text-xl md:text-2xl font-black mb-2 uppercase tracking-tight">No items found</h3>
+                  <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto text-xs md:text-sm leading-relaxed">
+                    We couldn't find any products in <span className="text-blue-600 font-bold">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
                   </p>
                   <button 
                     onClick={() => {
@@ -1631,78 +1631,75 @@ Your task:
                       setShowPreOrderOnly(false);
                       setSearchQuery('');
                     }}
-                    className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 dark:shadow-none"
+                    className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 dark:shadow-none active:scale-95"
                   >
-                    Clear all filters
+                    Reset all filters
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
-                  <AnimatePresence>
-                    {filteredProducts.map((product) => (
-                      <motion.div
-                        key={product.id}
-                        layout
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        transition={{ duration: 0.4, ease: "easeOut" }}
-                        className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden hover:shadow-2xl transition-all p-2"
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setActiveImageIndex(0);
-                        }}
-                      >
-                        <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
-                          <AnimatePresence>
-                            {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
-                              <motion.div 
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-black py-1 px-2 rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
-                              >
-                                <CheckCircle2 className="w-3 h-3 text-white" /> Visual Match
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                             <span className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">View Details</span>
-                          </div>
-                          <div className="absolute top-4 left-4 flex flex-col gap-2">
-                             {product.isPreOrder && (
-                              <div className="flex flex-col gap-1">
-                                <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
-                                  Pre-Order
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8">
+                  {filteredProducts.map((product) => (
+                    <motion.div
+                      key={product.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl md:rounded-[32px] overflow-hidden hover:shadow-2xl transition-all p-1.5 md:p-2"
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setActiveImageIndex(0);
+                      }}
+                    >
+                      <div className="relative aspect-[4/5] bg-neutral-50 dark:bg-neutral-800 rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3">
+                        <AnimatePresence>
+                          {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
+                            <motion.div 
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10 }}
+                              className="absolute top-1.5 left-1.5 md:top-2 md:left-2 bg-emerald-500 text-white text-[8px] md:text-[10px] font-black py-1 px-1.5 md:px-2 rounded-md md:rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" /> Visual Match
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-black/40 md:bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                           <span className="bg-white text-black px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform hidden md:block">View Details</span>
+                        </div>
+                        <div className="absolute top-2 left-2 md:top-4 md:left-4 flex flex-col gap-1 md:gap-2">
+                           {product.isPreOrder && (
+                            <div className="flex flex-col gap-0.5 md:gap-1">
+                              <span className="bg-amber-600 text-white px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
+                                Pre-Order
+                              </span>
+                              {product.preOrderDays && (
+                                <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-md md:rounded-lg text-[7px] md:text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
+                                  {product.preOrderDays}
                                 </span>
-                                {product.preOrderDays && (
-                                  <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
-                                    Available: {product.preOrderDays}
-                                  </span>
-                                )}
-                              </div>
-                             )}
-                          </div>
-                          <div className="absolute top-4 right-4 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-full text-xs font-black shadow-md flex items-center border border-neutral-100 dark:border-neutral-800">
-                            <span className="text-sm mr-1 font-black text-emerald-600">৳</span>{product.price}
-                          </div>
+                              )}
+                            </div>
+                           )}
                         </div>
-                        <div>
-                          <p className="text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-bold mb-1">
-                            {product.category}
-                          </p>
-                          <h3 className="text-lg font-semibold mb-1">{product.name}</h3>
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">{product.description}</p>
+                        <div className="absolute top-2 right-2 md:top-4 md:right-4 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm px-2 py-1 md:px-3 md:py-1.5 rounded-lg md:rounded-full text-[10px] md:text-xs font-black shadow-md flex items-center border border-neutral-100/50 dark:border-neutral-800/50">
+                          <span className="text-xs mr-0.5 md:mr-1 font-black text-emerald-600">৳</span>{product.price}
                         </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
+                      </div>
+                      <div className="px-1 md:px-2 pb-1">
+                        <p className="text-[8px] md:text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-black mb-0.5">
+                          {product.category}
+                        </p>
+                        <h3 className="text-xs md:text-lg font-black mb-0.5 md:mb-1 line-clamp-1">{product.name}</h3>
+                        <p className="text-[10px] md:text-sm text-neutral-500 dark:text-neutral-400 line-clamp-1 md:line-clamp-2 md:leading-relaxed">{product.description}</p>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               )}
             </div>
@@ -3838,19 +3835,35 @@ Your task:
                                 <button
                                   disabled={authLoading}
                                   onClick={async () => {
-                                    if (confirm('Permanently delete all cancelled orders from the registry?')) {
+                                    if (confirm('Permanently delete all cancelled orders from the cloud and local storage? This action is irreversible.')) {
                                       try {
                                         setAuthLoading(true);
                                         const cancelledOrders = allOrders.filter(o => o.status === 'Cancelled');
-                                        // Process in sequence or chunks to avoid hammering DB too hard if there are many
+                                        let successCount = 0;
+                                        let failCount = 0;
+
+                                        // Process one by one for better reliability and status tracking
                                         for (const order of cancelledOrders) {
-                                          await supabaseService.deleteOrder(order.id);
+                                          const wasDeleted = await supabaseService.deleteOrder(order.id);
+                                          if (wasDeleted) {
+                                            successCount++;
+                                          } else {
+                                            failCount++;
+                                          }
                                         }
-                                        setAllOrders(prev => prev.filter(o => o.status !== 'Cancelled'));
-                                        alert('Success: All cancelled orders have been purged from database and local storage.');
+
+                                        // Refresh local state
+                                        const refreshedOrders = await supabaseService.getOrders().catch(() => []);
+                                        setAllOrders(refreshedOrders);
+                                        
+                                        if (failCount === 0) {
+                                          alert(`Success: ${successCount} cancelled orders have been fully purged.`);
+                                        } else {
+                                          alert(`Partial Success: ${successCount} orders deleted, but ${failCount} orders failed to delete. Check your internet or DB permissions.`);
+                                        }
                                       } catch (err) {
-                                        console.error('Failed to clear cancelled orders:', err);
-                                        alert('Warning: Some orders could not be removed from the server. Check console for details.');
+                                        console.error('Purge operation failed:', err);
+                                        alert('Critical: The purge operation encountered a system error.');
                                       } finally {
                                         setAuthLoading(false);
                                       }
