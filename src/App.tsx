@@ -429,39 +429,46 @@ const supabaseService = {
     }
   },
   async deleteOrder(orderId: string) {
+    return this.deleteOrdersBulk([orderId]);
+  },
+  async deleteOrdersBulk(orderIds: string[]) {
     try {
+      if (!orderIds || orderIds.length === 0) return true;
+      
       const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
-      let deleted = false;
+      let totalDeletedCount = 0;
       
       for (const table of tableNames) {
         try {
-          const { error } = await supabase.from(table).delete().eq('id', orderId);
+          // Attempt bulk delete on 'id' column
+          const { error, count } = await supabase.from(table).delete({ count: 'exact' }).in('id', orderIds);
           if (!error) {
-            deleted = true;
-            break;
+            totalDeletedCount += (count || 0);
           }
-          // Try with fallback ID column if 'id' fails
-          const { error: error2 } = await supabase.from(table).delete().eq('order_id', orderId);
+          
+          // Attempt bulk delete on 'order_id' column if 'id' didn't cover everything
+          const { error: error2, count: count2 } = await supabase.from(table).delete({ count: 'exact' }).in('order_id', orderIds);
           if (!error2) {
-            deleted = true;
-            break;
+            totalDeletedCount += (count2 || 0);
           }
         } catch (e) {
           continue;
         }
       }
 
-      // Also clear from local storage
+      // Clear from local storage in one pass
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
-      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
+      const idsSet = new Set(orderIds);
+      const filteredLocal = localOrders.filter((o: any) => !idsSet.has(o.id) && !idsSet.has(o.order_id));
       localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
 
-      return deleted;
+      return true;
     } catch (err) {
-      console.error('deleteOrder failure:', err);
+      console.error('deleteOrdersBulk failure:', err);
       // Still try to clear from local storage as a fallback
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
-      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
+      const idsSet = new Set(orderIds);
+      const filteredLocal = localOrders.filter((o: any) => !idsSet.has(o.id) && !idsSet.has(o.order_id));
       localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
       return false;
     }
@@ -3838,32 +3845,29 @@ Your task:
                                     if (confirm('Permanently delete all cancelled orders from the cloud and local storage? This action is irreversible.')) {
                                       try {
                                         setAuthLoading(true);
-                                        const cancelledOrders = allOrders.filter(o => o.status === 'Cancelled');
-                                        let successCount = 0;
-                                        let failCount = 0;
-
-                                        // Process one by one for better reliability and status tracking
-                                        for (const order of cancelledOrders) {
-                                          const wasDeleted = await supabaseService.deleteOrder(order.id);
-                                          if (wasDeleted) {
-                                            successCount++;
-                                          } else {
-                                            failCount++;
-                                          }
-                                        }
-
-                                        // Refresh local state
-                                        const refreshedOrders = await supabaseService.getOrders().catch(() => []);
-                                        setAllOrders(refreshedOrders);
+                                        const cancelledOrderIds = allOrders
+                                          .filter(o => o.status === 'Cancelled')
+                                          .map(o => o.id);
                                         
-                                        if (failCount === 0) {
-                                          alert(`Success: ${successCount} cancelled orders have been fully purged.`);
-                                        } else {
-                                          alert(`Partial Success: ${successCount} orders deleted, but ${failCount} orders failed to delete. Check your internet or DB permissions.`);
+                                        if (cancelledOrderIds.length > 0) {
+                                          const wasSuccessful = await supabaseService.deleteOrdersBulk(cancelledOrderIds);
+                                          
+                                          if (wasSuccessful) {
+                                            // Optimistic UI update
+                                            setAllOrders(prev => prev.filter(o => o.status !== 'Cancelled'));
+                                            
+                                            // Refresh from server to ensure sync
+                                            const refreshedRef = await supabaseService.getOrders().catch(() => []);
+                                            if (refreshedRef) setAllOrders(refreshedRef);
+                                            
+                                            alert(`Success: ${cancelledOrderIds.length} cancelled orders have been purged.`);
+                                          } else {
+                                            alert('Error: Some orders could not be removed from the cloud. Please check your connection.');
+                                          }
                                         }
                                       } catch (err) {
                                         console.error('Purge operation failed:', err);
-                                        alert('Critical: The purge operation encountered a system error.');
+                                        alert('Critical: System error during purge operation.');
                                       } finally {
                                         setAuthLoading(false);
                                       }
