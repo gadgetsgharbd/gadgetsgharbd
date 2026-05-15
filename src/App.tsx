@@ -113,9 +113,20 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storage: window.localStorage
+    storage: window.localStorage,
+    storageKey: 'gadgets_ghar_supabase_auth'
   }
 });
+
+// Helper to fully clear Supabase auth from localStorage on logout
+const clearSupabaseAuth = () => {
+  // Remove all supabase auth keys
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('gadgets_ghar_supabase_auth') || key.startsWith('sb-')) {
+      localStorage.removeItem(key);
+    }
+  });
+};
 
 const supabaseService = {
   async getProducts() {
@@ -429,46 +440,39 @@ const supabaseService = {
     }
   },
   async deleteOrder(orderId: string) {
-    return this.deleteOrdersBulk([orderId]);
-  },
-  async deleteOrdersBulk(orderIds: string[]) {
     try {
-      if (!orderIds || orderIds.length === 0) return true;
-      
       const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
-      let totalDeletedCount = 0;
+      let deleted = false;
       
       for (const table of tableNames) {
         try {
-          // Attempt bulk delete on 'id' column
-          const { error, count } = await supabase.from(table).delete({ count: 'exact' }).in('id', orderIds);
+          const { error } = await supabase.from(table).delete().eq('id', orderId);
           if (!error) {
-            totalDeletedCount += (count || 0);
+            deleted = true;
+            break;
           }
-          
-          // Attempt bulk delete on 'order_id' column if 'id' didn't cover everything
-          const { error: error2, count: count2 } = await supabase.from(table).delete({ count: 'exact' }).in('order_id', orderIds);
+          // Try with fallback ID column if 'id' fails
+          const { error: error2 } = await supabase.from(table).delete().eq('order_id', orderId);
           if (!error2) {
-            totalDeletedCount += (count2 || 0);
+            deleted = true;
+            break;
           }
         } catch (e) {
           continue;
         }
       }
 
-      // Clear from local storage in one pass
+      // Also clear from local storage
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
-      const idsSet = new Set(orderIds);
-      const filteredLocal = localOrders.filter((o: any) => !idsSet.has(o.id) && !idsSet.has(o.order_id));
+      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
       localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
 
-      return true;
+      return deleted;
     } catch (err) {
-      console.error('deleteOrdersBulk failure:', err);
+      console.error('deleteOrder failure:', err);
       // Still try to clear from local storage as a fallback
       const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
-      const idsSet = new Set(orderIds);
-      const filteredLocal = localOrders.filter((o: any) => !idsSet.has(o.id) && !idsSet.has(o.order_id));
+      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
       localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
       return false;
     }
@@ -628,6 +632,50 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Welcome voice greeting — waits for auth to load, then greets by name if logged in
+  useEffect(() => {
+    if (isLoading) return; // wait until auth state is known
+
+    const speakWelcome = () => {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+
+      // If user logged in, say their first name; otherwise just say Welcome
+      const firstName = user?.displayName?.split(' ')[0] || '';
+      const message = firstName
+        ? `Welcome back, ${firstName}! Great to see you at Gadgets Ghar BD.`
+        : `Welcome to Gadgets Ghar BD!`;
+
+      const utterance = new SpeechSynthesisUtterance(message);
+
+      const setVoiceAndSpeak = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v =>
+          v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Samantha'))
+        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+
+        if (preferred) utterance.voice = preferred;
+        utterance.lang = 'en-US';
+        utterance.rate = 0.92;
+        utterance.pitch = 1.05;
+        utterance.volume = 1;
+        window.speechSynthesis.speak(utterance);
+      };
+
+      if (window.speechSynthesis.getVoices().length > 0) {
+        setVoiceAndSpeak();
+      } else {
+        window.speechSynthesis.onvoiceschanged = setVoiceAndSpeak;
+      }
+    };
+
+    const voiceTimer = setTimeout(speakWelcome, 1200);
+    return () => {
+      clearTimeout(voiceTimer);
+      window.speechSynthesis?.cancel();
+    };
+  }, [isLoading, user]);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [userEmail, setUserEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -740,57 +788,57 @@ export default function App() {
 
   // Load Initial Global Data
   useEffect(() => {
+    let cancelled = false;
+
+    const mapProduct = (p: any) => ({
+      ...p,
+      hasWarranty: p.has_warranty ?? p.hasWarranty,
+      warrantyDetails: p.warranty_details ?? p.warrantyDetails,
+      warrantyTime: p.warranty_time ?? p.warrantyTime,
+      warrantyConditions: p.warranty_conditions ?? p.warrantyConditions,
+      isPreOrder: p.is_pre_order ?? p.isPreOrder,
+      preOrderDays: p.pre_order_days ?? p.preOrderDays
+    });
+
     const fetchData = async () => {
+      setIsLoading(true);
+
+      // Hard fallback — ALWAYS turn off loading after 4s no matter what
+      const safetyTimeout = setTimeout(() => {
+        if (!cancelled) setIsLoading(false);
+      }, 4000);
+
+      // Fetch products FIRST and independently — most critical
       try {
-        setIsLoading(true);
-        // Safety timeout increased to 10s for slow connections
-        const safetyTimeout = setTimeout(() => setIsLoading(false), 10000);
-        
-        const [products, orders, settings] = await Promise.all([
-          supabaseService.getProducts().catch((err) => {
-            console.error('Products fetch error:', err);
-            return [];
-          }),
-          supabaseService.getOrders().catch((err) => {
-            console.error('Orders fetch error:', err);
-            return [];
-          }),
-          supabaseService.getSettings().catch((err) => {
-            console.error('Settings fetch error:', err);
-            return null;
-          })
-        ]);
-        
-        clearTimeout(safetyTimeout);
-        
-        if (products && products.length > 0) {
-          const mappedProducts = (products as any[]).map((p: any) => ({
-            ...p,
-            hasWarranty: p.has_warranty ?? p.hasWarranty,
-            warrantyDetails: p.warranty_details ?? p.warrantyDetails,
-            warrantyTime: p.warranty_time ?? p.warrantyTime,
-            warrantyConditions: p.warranty_conditions ?? p.warrantyConditions,
-            isPreOrder: p.is_pre_order ?? p.isPreOrder,
-            preOrderDays: p.pre_order_days ?? p.preOrderDays
-          }));
-          setProductsList(mappedProducts);
-        } else {
-          // If server returns empty, we keep the empty array but log it
-          console.log('No products found on server.');
-          setProductsList([]);
+        const products = await supabaseService.getProducts();
+        if (!cancelled && products && products.length > 0) {
+          setProductsList(products.map(mapProduct));
         }
-        if (orders) setAllOrders(orders);
-        if (settings) {
-            setSiteSettings(prev => ({ ...prev, ...settings }));
-        }
-      } catch (error) {
-        console.error('Failed to fetch initial data:', error);
+      } catch (err) {
+        console.error('Products fetch failed:', err);
       } finally {
-        setIsLoading(false);
+        // Show products immediately even if other fetches are pending
+        if (!cancelled) setIsLoading(false);
+        clearTimeout(safetyTimeout);
+      }
+
+      // Fetch orders and settings in background (non-blocking)
+      try {
+        const [orders, settings] = await Promise.all([
+          supabaseService.getOrders().catch(() => null),
+          supabaseService.getSettings().catch(() => null)
+        ]);
+        if (!cancelled) {
+          if (orders) setAllOrders(orders);
+          if (settings) setSiteSettings(prev => ({ ...prev, ...settings }));
+        }
+      } catch (err) {
+        console.error('Background fetch failed:', err);
       }
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, []);
 
   // Admin Product Form State
@@ -1366,7 +1414,7 @@ Your task:
                         <button 
                           onClick={async () => {
                             try {
-                              await supabase.auth.signOut();
+                              await supabase.auth.signOut(); clearSupabaseAuth();
                             } catch (err) {
                               console.error('Sign out error:', err);
                             }
@@ -1577,40 +1625,40 @@ Your task:
         </section>
 
         {/* Product Section */}
-        <section id="products" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-20">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 md:mb-12 gap-6 w-full">
+        <section id="products" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6 w-full overflow-hidden">
             <div className="w-full md:w-auto">
-              <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-2 uppercase italic font-display">Featured Products</h2>
+              <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">Featured Products</h2>
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${productsList.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-300'}`} />
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <p className="text-neutral-500 dark:text-neutral-400 text-[10px] font-black uppercase tracking-widest">
-                  {isLoading ? 'Scanning Inventory...' : `Live Catalog: ${filteredProducts.length} Items`}
+                  Showing {filteredProducts.length} items in {selectedCategory}
                 </p>
               </div>
             </div>
 
             {/* Category Filter - Optimized for Mobile Scroll */}
-            <div className="w-full md:w-auto overflow-hidden relative">
-              <div className="flex overflow-x-auto pb-3 gap-2 no-scrollbar scroll-smooth -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide touch-pan-x">
+            <div className="w-full md:w-auto overflow-hidden">
+              <div className="flex overflow-x-auto pb-4 gap-2 no-scrollbar scroll-smooth -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide touch-pan-x">
                 <button
                   onClick={() => setShowPreOrderOnly(!showPreOrderOnly)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border-2 ${
+                  className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border-2 ${
                     showPreOrderOnly
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-lg'
-                      : 'bg-white dark:bg-neutral-900 text-amber-600 border-amber-100 dark:border-neutral-800'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xl shadow-amber-200 dark:shadow-none'
+                      : 'bg-white dark:bg-neutral-900 text-amber-600 border-amber-100 dark:border-neutral-800 hover:bg-amber-50'
                   }`}
                 >
-                  <Clock className="w-3 h-3" /> Pre-Order
+                  <Clock className="w-3.5 h-3.5" /> Pre-Order
                 </button>
-                <div className="w-px h-6 bg-neutral-200 dark:bg-neutral-800 self-center hidden md:block" />
+                <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800 self-center hidden md:block" />
                 {dynamicCategories.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
+                    className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
                       selectedCategory === cat
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
-                        : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-100 dark:border-neutral-800'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-200 dark:shadow-blue-900 transform scale-105 z-10'
+                        : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800'
                     }`}
                   >
                     {cat}
@@ -1620,88 +1668,108 @@ Your task:
             </div>
           </div>
 
-          <div className="min-h-[400px] w-full">
-            {isLoading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <div key={i} className="animate-pulse bg-white dark:bg-neutral-900 p-2 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-                    <div className="aspect-[4/5] bg-neutral-100 dark:bg-neutral-800 rounded-2xl mb-4" />
-                    <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-lg w-3/4 mb-2 mx-2" />
-                    <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg w-1/2 mx-2" />
-                  </div>
-                ))}
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-neutral-900 border-2 border-dashed border-neutral-100 dark:border-neutral-800 rounded-[40px] text-center px-6">
-                <AnimatePresence>
-                  <motion.div 
-                    initial={{ scale: 0.5, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800/50 rounded-full flex items-center justify-center mb-6"
-                  >
+          {isLoading && (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-3xl mb-4" />
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-3/4 mb-2" />
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-1/2" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(productsList.length > 0 || !isLoading) && (
+            <div className="min-h-[400px] w-full mt-4 md:mt-8">
+              {filteredProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-neutral-900 border-2 border-dashed border-neutral-100 dark:border-neutral-800 rounded-[40px] text-center px-6 mx-auto max-w-2xl shadow-sm">
+                  <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800/50 rounded-full flex items-center justify-center mb-6">
                     <Search className="w-10 h-10 text-neutral-300 dark:text-neutral-700" />
-                  </motion.div>
-                </AnimatePresence>
-                <h3 className="text-xl md:text-2xl font-black mb-2 uppercase tracking-tight">No match found</h3>
-                <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto text-xs md:text-sm leading-relaxed mb-8">
-                  We couldn't find items in <span className="text-blue-600 font-bold">{selectedCategory}</span> matching your criteria.
-                </p>
-                <button 
-                  onClick={() => {
-                    setSelectedCategory('All');
-                    setShowPreOrderOnly(false);
-                    setSearchQuery('');
-                  }}
-                  className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 dark:shadow-none"
-                >
-                  Clear Filters
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-8">
-                {filteredProducts.map((product) => (
-                  <motion.div
-                    key={product.id}
-                    layoutId={product.id}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl md:rounded-[32px] overflow-hidden hover:shadow-2xl transition-all p-1.5 md:p-2"
+                  </div>
+                  <h3 className="text-xl md:text-2xl font-black mb-2 uppercase tracking-tight">No items found</h3>
+                  <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto text-xs md:text-sm leading-relaxed">
+                    We couldn't find any products in <span className="text-blue-600 font-bold">{selectedCategory}</span> {searchQuery && <span>matching "<span className="font-bold">{searchQuery}</span>"</span>}.
+                  </p>
+                  <button 
                     onClick={() => {
-                      setSelectedProduct(product);
-                      setActiveImageIndex(0);
+                      setSelectedCategory('All');
+                      setShowPreOrderOnly(false);
+                      setSearchQuery('');
                     }}
+                    className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 dark:shadow-none active:scale-95"
                   >
-                    <div className="relative aspect-[4/5] bg-neutral-50 dark:bg-neutral-800 rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3">
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                         <span className="bg-white text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform hidden md:block">View Details</span>
+                    Reset all filters
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8">
+                  {filteredProducts.map((product) => (
+                    <motion.div
+                      key={product.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl md:rounded-[32px] overflow-hidden hover:shadow-2xl transition-all p-1.5 md:p-2"
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setActiveImageIndex(0);
+                      }}
+                    >
+                      <div className="relative aspect-[4/5] bg-neutral-50 dark:bg-neutral-800 rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3">
+                        <AnimatePresence>
+                          {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
+                            <motion.div 
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10 }}
+                              className="absolute top-1.5 left-1.5 md:top-2 md:left-2 bg-emerald-500 text-white text-[8px] md:text-[10px] font-black py-1 px-1.5 md:px-2 rounded-md md:rounded-lg flex items-center gap-1 shadow-lg z-10 uppercase tracking-tighter"
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" /> Visual Match
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-black/40 md:bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                           <span className="bg-white text-black px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform hidden md:block">View Details</span>
+                        </div>
+                        <div className="absolute top-2 left-2 md:top-4 md:left-4 flex flex-col gap-1 md:gap-2">
+                           {product.isPreOrder && (
+                            <div className="flex flex-col gap-0.5 md:gap-1">
+                              <span className="bg-amber-600 text-white px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest shadow-lg self-start">
+                                Pre-Order
+                              </span>
+                              {product.preOrderDays && (
+                                <span className="bg-white/90 backdrop-blur dark:bg-neutral-800/90 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-md md:rounded-lg text-[7px] md:text-[8px] font-black uppercase tracking-widest shadow-sm self-start border border-amber-500/20">
+                                  {product.preOrderDays}
+                                </span>
+                              )}
+                            </div>
+                           )}
+                        </div>
+                        <div className="absolute top-2 right-2 md:top-4 md:right-4 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm px-2 py-1 md:px-3 md:py-1.5 rounded-lg md:rounded-full text-[10px] md:text-xs font-black shadow-md flex items-center border border-neutral-100/50 dark:border-neutral-800/50">
+                          <span className="text-xs mr-0.5 md:mr-1 font-black text-emerald-600">৳</span>{product.price}
+                        </div>
                       </div>
-                      <div className="absolute top-2 left-2 md:top-4 md:left-4 flex flex-col gap-1">
-                         {product.isPreOrder && (
-                            <span className="bg-amber-600 text-white px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[7px] md:text-[9px] font-black uppercase tracking-widest shadow-lg">
-                              Pre-Order
-                            </span>
-                         )}
+                      <div className="px-1 md:px-2 pb-1">
+                        <p className="text-[8px] md:text-xs text-neutral-400 dark:text-neutral-500 uppercase tracking-widest font-black mb-0.5">
+                          {product.category}
+                        </p>
+                        <h3 className="text-xs md:text-lg font-black mb-0.5 md:mb-1 line-clamp-1">{product.name}</h3>
+                        <p className="text-[10px] md:text-sm text-neutral-500 dark:text-neutral-400 line-clamp-1 md:line-clamp-2 md:leading-relaxed">{product.description}</p>
                       </div>
-                      <div className="absolute top-2 right-2 md:top-4 md:right-4 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm px-2 py-0.5 md:px-3 md:py-1 rounded-lg md:rounded-full text-[9px] md:text-xs font-black shadow-md flex items-center">
-                        <span className="text-emerald-600 mr-0.5 animate-pulse">৳</span>{product.price}
-                      </div>
-                    </div>
-                    <div className="px-1 md:px-2 pb-1">
-                      <p className="text-[7px] md:text-[10px] text-neutral-400 uppercase tracking-widest font-black mb-0.5">{product.category}</p>
-                      <h3 className="text-xs md:text-base font-black mb-1 line-clamp-1">{product.name}</h3>
-                      <p className="text-[9px] md:text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 md:line-clamp-2 md:leading-relaxed">{product.description}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </section>
       </main>
 
@@ -2579,7 +2647,7 @@ Your task:
                       <button 
                         onClick={async () => {
                           try {
-                            await supabase.auth.signOut();
+                            await supabase.auth.signOut(); clearSupabaseAuth();
                           } catch (err) {
                             console.error('Sign out error:', err);
                           }
@@ -3395,7 +3463,7 @@ Your task:
                   <button
                     onClick={async () => {
                       alert('Password changed successfully! Please log in again.');
-                      await supabase.auth.signOut();
+                      await supabase.auth.signOut(); clearSupabaseAuth();
                       setCart([]);
                       localStorage.removeItem('gadgets_ghar_cart');
                       setUser(null);
@@ -3723,7 +3791,7 @@ Your task:
                     <div className="flex items-center gap-3">
                       <button 
                          onClick={async () => {
-                           await supabase.auth.signOut();
+                           await supabase.auth.signOut(); clearSupabaseAuth();
                            setCart([]);
                            localStorage.removeItem('gadgets_ghar_cart');
                            setIsAdminLoggedIn(false);
@@ -3836,29 +3904,32 @@ Your task:
                                     if (confirm('Permanently delete all cancelled orders from the cloud and local storage? This action is irreversible.')) {
                                       try {
                                         setAuthLoading(true);
-                                        const cancelledOrderIds = allOrders
-                                          .filter(o => o.status === 'Cancelled')
-                                          .map(o => o.id);
-                                        
-                                        if (cancelledOrderIds.length > 0) {
-                                          const wasSuccessful = await supabaseService.deleteOrdersBulk(cancelledOrderIds);
-                                          
-                                          if (wasSuccessful) {
-                                            // Optimistic UI update
-                                            setAllOrders(prev => prev.filter(o => o.status !== 'Cancelled'));
-                                            
-                                            // Refresh from server to ensure sync
-                                            const refreshedRef = await supabaseService.getOrders().catch(() => []);
-                                            if (refreshedRef) setAllOrders(refreshedRef);
-                                            
-                                            alert(`Success: ${cancelledOrderIds.length} cancelled orders have been purged.`);
+                                        const cancelledOrders = allOrders.filter(o => o.status === 'Cancelled');
+                                        let successCount = 0;
+                                        let failCount = 0;
+
+                                        // Process one by one for better reliability and status tracking
+                                        for (const order of cancelledOrders) {
+                                          const wasDeleted = await supabaseService.deleteOrder(order.id);
+                                          if (wasDeleted) {
+                                            successCount++;
                                           } else {
-                                            alert('Error: Some orders could not be removed from the cloud. Please check your connection.');
+                                            failCount++;
                                           }
+                                        }
+
+                                        // Refresh local state
+                                        const refreshedOrders = await supabaseService.getOrders().catch(() => []);
+                                        setAllOrders(refreshedOrders);
+                                        
+                                        if (failCount === 0) {
+                                          alert(`Success: ${successCount} cancelled orders have been fully purged.`);
+                                        } else {
+                                          alert(`Partial Success: ${successCount} orders deleted, but ${failCount} orders failed to delete. Check your internet or DB permissions.`);
                                         }
                                       } catch (err) {
                                         console.error('Purge operation failed:', err);
-                                        alert('Critical: System error during purge operation.');
+                                        alert('Critical: The purge operation encountered a system error.');
                                       } finally {
                                         setAuthLoading(false);
                                       }
