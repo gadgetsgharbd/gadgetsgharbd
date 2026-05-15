@@ -737,7 +737,7 @@ export default function App() {
       try {
         setIsLoading(true);
         // Safety timeout to ensure loading state doesn't get stuck
-        const safetyTimeout = setTimeout(() => setIsLoading(false), 10000);
+        const safetyTimeout = setTimeout(() => setIsLoading(false), 5000);
         
         const [products, orders, settings] = await Promise.all([
           supabaseService.getProducts().catch(() => []),
@@ -1560,69 +1560,77 @@ Your task:
 
         {/* Product Section */}
         <section id="products" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight mb-2">Featured Products</h2>
-              <p className="text-neutral-500 dark:text-neutral-400 text-sm">Showing {filteredProducts.length} items</p>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6 w-full overflow-hidden">
+            <div className="w-full md:w-auto">
+              <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">Featured Products</h2>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-neutral-500 dark:text-neutral-400 text-[10px] font-black uppercase tracking-widest">
+                  Showing {filteredProducts.length} items in {selectedCategory}
+                </p>
+              </div>
             </div>
 
-            {/* Category Filter */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setShowPreOrderOnly(!showPreOrderOnly)}
-                className={`px-4 py-2 rounded-full text-sm font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                  showPreOrderOnly
-                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none'
-                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-200 dark:border-amber-800'
-                }`}
-              >
-                <Clock className="w-4 h-4" /> Pre-Order
-              </button>
-              <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800 mx-2 hidden md:block" />
-              {dynamicCategories.map((cat) => (
+            {/* Category Filter - Optimized for Mobile Scroll */}
+            <div className="w-full md:w-auto overflow-hidden">
+              <div className="flex overflow-x-auto pb-4 gap-2 no-scrollbar scroll-smooth -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide touch-pan-x">
                 <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    selectedCategory === cat
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900'
-                      : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700'
+                  onClick={() => setShowPreOrderOnly(!showPreOrderOnly)}
+                  className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border-2 ${
+                    showPreOrderOnly
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xl shadow-amber-200 dark:shadow-none'
+                      : 'bg-white dark:bg-neutral-900 text-amber-600 border-amber-100 dark:border-neutral-800 hover:bg-amber-50'
                   }`}
                 >
-                  {cat}
+                  <Clock className="w-3.5 h-3.5" /> Pre-Order
                 </button>
-              ))}
+                <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800 self-center hidden md:block" />
+                {dynamicCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
+                      selectedCategory === cat
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-200 dark:shadow-blue-900 transform scale-105 z-10'
+                        : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl mb-4" />
-                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-3/4 mb-2" />
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-1/2" />
+                  <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-3xl mb-4" />
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-3/4 mb-2" />
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-1/2" />
                 </div>
               ))}
             </div>
           )}
 
           {!isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-              {filteredProducts.map((product) => (
-                <motion.div
-                  key={product.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
-                  className="group cursor-pointer flex flex-col h-full"
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setActiveImageIndex(0);
-                  }}
-                >
+            <div className="min-h-[400px] grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {filteredProducts.map((product) => (
+                  <motion.div
+                    key={product.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="group cursor-pointer flex flex-col h-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden hover:shadow-2xl transition-all p-2"
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setActiveImageIndex(0);
+                    }}
+                  >
                     <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
                       <AnimatePresence>
                         {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
@@ -1672,6 +1680,7 @@ Your task:
                     </div>
                   </motion.div>
                 ))}
+              </AnimatePresence>
             </div>
           )}
 
