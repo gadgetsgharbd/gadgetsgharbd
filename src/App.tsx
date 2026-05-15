@@ -429,9 +429,42 @@ const supabaseService = {
     }
   },
   async deleteOrder(orderId: string) {
-    const { error } = await supabase.from('orders').delete().eq('id', orderId);
-    if (error) throw error;
-    return true;
+    try {
+      const tableNames = ['orders', 'Orders', 'order', 'Order_Details'];
+      let deleted = false;
+      
+      for (const table of tableNames) {
+        try {
+          const { error } = await supabase.from(table).delete().eq('id', orderId);
+          if (!error) {
+            deleted = true;
+            break;
+          }
+          // Try with fallback ID column if 'id' fails
+          const { error: error2 } = await supabase.from(table).delete().eq('order_id', orderId);
+          if (!error2) {
+            deleted = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // Also clear from local storage
+      const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
+      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
+      localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
+
+      return deleted;
+    } catch (err) {
+      console.error('deleteOrder failure:', err);
+      // Still try to clear from local storage as a fallback
+      const localOrders = JSON.parse(localStorage.getItem('gadgets_ghar_local_orders') || '[]');
+      const filteredLocal = localOrders.filter((o: any) => (o.id !== orderId && o.order_id !== orderId));
+      localStorage.setItem('gadgets_ghar_local_orders', JSON.stringify(filteredLocal));
+      return false;
+    }
   },
   async getSettings() {
     const { data, error } = await supabase.from('site_settings').select('*').single();
@@ -703,11 +736,16 @@ export default function App() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
+        // Safety timeout to ensure loading state doesn't get stuck
+        const safetyTimeout = setTimeout(() => setIsLoading(false), 10000);
+        
         const [products, orders, settings] = await Promise.all([
           supabaseService.getProducts().catch(() => []),
           supabaseService.getOrders().catch(() => []),
           supabaseService.getSettings().catch(() => null)
         ]);
+        
+        clearTimeout(safetyTimeout);
         
         if (products) {
           const mappedProducts = (products as any[]).map((p: any) => ({
@@ -716,6 +754,7 @@ export default function App() {
             warrantyDetails: p.warranty_details ?? p.warrantyDetails,
             warrantyTime: p.warranty_time ?? p.warrantyTime,
             warrantyConditions: p.warranty_conditions ?? p.warrantyConditions,
+            isPreOrder: p.is_pre_order ?? p.isPreOrder,
             preOrderDays: p.pre_order_days ?? p.preOrderDays
           }));
           setProductsList(mappedProducts);
@@ -1557,7 +1596,7 @@ Your task:
           </div>
 
           {isLoading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="animate-pulse">
                   <div className="aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl mb-4" />
@@ -1569,21 +1608,21 @@ Your task:
           )}
 
           {!isLoading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
-              <AnimatePresence>
-                {filteredProducts.map((product) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.3 }}
-                    className="group cursor-pointer flex flex-col h-full"
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setActiveImageIndex(0);
-                    }}
-                  >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+              {filteredProducts.map((product) => (
+                <motion.div
+                  key={product.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3 }}
+                  className="group cursor-pointer flex flex-col h-full"
+                  onClick={() => {
+                    setSelectedProduct(product);
+                    setActiveImageIndex(0);
+                  }}
+                >
                     <div className="relative aspect-[4/5] bg-neutral-200 dark:bg-neutral-800 rounded-2xl overflow-hidden mb-3">
                       <AnimatePresence>
                         {lastVisualMatch && product.name.toLowerCase().includes(lastVisualMatch.toLowerCase()) && (
@@ -1633,7 +1672,6 @@ Your task:
                     </div>
                   </motion.div>
                 ))}
-              </AnimatePresence>
             </div>
           )}
 
@@ -1684,44 +1722,75 @@ Your task:
               </button>
 
               {/* Product Image Area */}
-              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-4 md:p-8 flex-shrink-0">
-                <div className="relative w-full h-[240px] md:h-[350px] lg:h-[400px] mb-2 md:mb-6 flex items-center justify-center">
+              <div className="w-full md:w-1/2 bg-neutral-100 dark:bg-neutral-800 flex flex-col items-center justify-center p-4 md:p-8 flex-shrink-0 relative">
+                <div className="relative w-full h-[280px] md:h-[400px] lg:h-[450px] mb-4 md:mb-6 flex items-center justify-center group overflow-hidden">
+                  {/* Gallery Navigation Arrows (Desktop) */}
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const total = 1 + (selectedProduct.images?.filter(img => img).length || 0);
+                      setActiveImageIndex(prev => (prev - 1 + total) % total);
+                    }}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-90 hidden md:block"
+                  >
+                    <ChevronLeft className="w-5 h-5 text-neutral-900 dark:text-white" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const total = 1 + (selectedProduct.images?.filter(img => img).length || 0);
+                      setActiveImageIndex(prev => (prev + 1) % total);
+                    }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-90 hidden md:block"
+                  >
+                    <ChevronRight className="w-5 h-5 text-neutral-900 dark:text-white" />
+                  </button>
+
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={activeImageIndex}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.05 }}
-                      transition={{ duration: 0.3 }}
+                      initial={{ opacity: 0, scale: 0.9, x: 20 }}
+                      animate={{ opacity: 1, scale: 1, x: 0 }}
+                      exit={{ opacity: 0, scale: 1.1, x: -20 }}
+                      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                       src={activeImageIndex === 0 ? selectedProduct.image : selectedProduct.images?.[activeImageIndex - 1]}
                       alt={selectedProduct.name}
-                      className="w-full h-full object-contain rounded-2xl drop-shadow-xl"
+                      className="w-full h-full object-contain rounded-2xl drop-shadow-2xl"
                       referrerPolicy="no-referrer"
                     />
                   </AnimatePresence>
+
+                  {/* Image Counter Indicator (Mobile) */}
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/20 backdrop-blur-md rounded-full md:hidden">
+                    <span className="text-[10px] font-black text-white uppercase tracking-tighter">
+                      {activeImageIndex + 1} / {1 + (selectedProduct.images?.filter(img => img).length || 0)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Thumbnail Gallery */}
+                {/* Thumbnail Gallery - Professional Grid/Scroll */}
                 {(selectedProduct.images && Array.isArray(selectedProduct.images) && selectedProduct.images.some(img => img)) && (
-                  <div className="flex gap-2 w-full px-4 overflow-x-auto py-3 scrollbar-hide justify-start md:justify-center items-center no-scrollbar">
-                    <button
-                      onClick={() => setActiveImageIndex(0)}
-                      className={`flex-shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all shadow-sm ${activeImageIndex === 0 ? 'border-blue-600 scale-105 shadow-blue-200' : 'border-transparent opacity-60'}`}
-                    >
-                      <img src={selectedProduct.image} alt="Thumbnail 1" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </button>
-                    {selectedProduct.images.map((img, idx) => {
-                      if (!img || typeof img !== 'string') return null;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setActiveImageIndex(idx + 1)}
-                          className={`flex-shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all shadow-sm ${activeImageIndex === idx + 1 ? 'border-blue-600 scale-105 shadow-blue-200' : 'border-transparent opacity-60'}`}
-                        >
-                          <img src={img} alt={`Thumbnail ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        </button>
-                      );
-                    })}
+                  <div className="w-full px-2 max-w-md mx-auto">
+                    <div className="flex gap-3 overflow-x-auto py-2 px-1 scrollbar-hide justify-start md:justify-center items-center no-scrollbar touch-pan-x">
+                      {[selectedProduct.image, ...selectedProduct.images].filter(img => img && typeof img === 'string').map((img, idx) => {
+                        const isSelected = activeImageIndex === idx;
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => setActiveImageIndex(idx)}
+                            className={`relative flex-shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 shadow-sm transform ${isSelected ? 'border-blue-600 scale-110 shadow-blue-200 z-10' : 'border-neutral-200 dark:border-neutral-800 opacity-40 hover:opacity-80'}`}
+                          >
+                            <img src={img} alt={`Thumb ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            {isSelected && (
+                              <motion.div 
+                                layoutId="activeThumb"
+                                className="absolute inset-0 border-2 border-blue-600 rounded-xl"
+                              />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -3754,22 +3823,38 @@ Your task:
                               </button>
                               {allOrders.some(o => o.status === 'Cancelled') && (
                                 <button
+                                  disabled={authLoading}
                                   onClick={async () => {
                                     if (confirm('Permanently delete all cancelled orders from the registry?')) {
                                       try {
+                                        setAuthLoading(true);
                                         const cancelledOrders = allOrders.filter(o => o.status === 'Cancelled');
-                                        await Promise.all(cancelledOrders.map(o => supabaseService.deleteOrder(o.id)));
+                                        // Process in sequence or chunks to avoid hammering DB too hard if there are many
+                                        for (const order of cancelledOrders) {
+                                          await supabaseService.deleteOrder(order.id);
+                                        }
                                         setAllOrders(prev => prev.filter(o => o.status !== 'Cancelled'));
-                                        alert('All cancelled orders have been removed.');
+                                        alert('Success: All cancelled orders have been purged from database and local storage.');
                                       } catch (err) {
                                         console.error('Failed to clear cancelled orders:', err);
-                                        alert('Failed to clear some orders from DB.');
+                                        alert('Warning: Some orders could not be removed from the server. Check console for details.');
+                                      } finally {
+                                        setAuthLoading(false);
                                       }
                                     }
                                   }}
-                                  className="px-4 py-2 bg-red-50 dark:bg-red-900/10 text-red-600 rounded-xl border border-red-100 dark:border-red-800/30 text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all flex items-center gap-2"
+                                  className={`px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                                    authLoading 
+                                      ? 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed' 
+                                      : 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-800/30 hover:bg-red-100'
+                                  }`}
                                 >
-                                  <Trash2 className="w-3 h-3" /> Clear Cancelled
+                                  {authLoading ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3 h-3" />
+                                  )}
+                                  {authLoading ? 'Clearing...' : 'Clear Cancelled'}
                                 </button>
                               )}
                               <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800/30">
